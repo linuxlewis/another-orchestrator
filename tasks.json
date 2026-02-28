@@ -99,37 +99,73 @@
     "slice1": {
       "name": "I can load config and read state files",
       "goal": "`orchestrator status` works — create state files by hand, CLI reads and displays them.",
-      "tasks": ["03-config-loader", "04-state-manager", "05-logger", "06-cli-init-status"],
+      "tasks": [
+        "03-config-loader",
+        "04-state-manager",
+        "05-logger",
+        "06-cli-init-status"
+      ],
       "testableOutcome": "Create state/test-plan/ with _plan.json and TICKET-1.json by hand. Run `orchestrator status` and see formatted output. Run `orchestrator init` and see directories created."
     },
     "slice2": {
       "name": "I can run a script phase",
       "goal": "The runner picks up a ticket, executes a script phase, and updates the state file.",
-      "tasks": ["07-shell-util", "08-template-renderer", "09-workflow-loader", "10-minimal-workflow", "11-setup-worktree", "12-phase-executor-script", "13-runner-single-ticket", "14-cli-run"],
+      "tasks": [
+        "07-shell-util",
+        "08-template-renderer",
+        "09-workflow-loader",
+        "10-minimal-workflow",
+        "11-setup-worktree",
+        "12-phase-executor-script",
+        "13-runner-single-ticket",
+        "14-cli-run"
+      ],
       "testableOutcome": "Create a minimal workflow with a script phase. Create state files pointing to it. Run `orchestrator run test-plan TICKET-1` and see the phase execute, state file update, and phase history recorded."
     },
     "slice3": {
       "name": "I can run an agent phase",
       "goal": "A headless coding agent is invoked with a rendered prompt and its output is captured.",
-      "tasks": ["15-agent-invoker", "16-phase-executor-agent", "17-implement-prompt", "18-standard-workflow"],
+      "tasks": [
+        "15-agent-invoker",
+        "16-phase-executor-agent",
+        "17-implement-prompt",
+        "18-standard-workflow"
+      ],
       "testableOutcome": "Create a ticket pointing at a real repo. Run `orchestrator run test-plan TICKET-1`. Watch the agent get invoked, implement a feature, and see the state file progress through phases."
     },
     "slice4": {
       "name": "I can run the daemon loop",
       "goal": "The daemon scans plans, resolves dependencies, and processes tickets concurrently.",
-      "tasks": ["19-runner-daemon", "20-cli-daemon-commands", "21-cleanup-worktree"],
+      "tasks": [
+        "19-runner-daemon",
+        "20-cli-daemon-commands",
+        "21-cleanup-worktree"
+      ],
       "testableOutcome": "Create a plan with 3 tickets (2 independent, 1 blocked). Run `orchestrator daemon`. Watch it pick up the 2 ready tickets concurrently, complete them, unblock the third, and process it."
     },
     "slice5": {
       "name": "I can handle PR review cycles",
       "goal": "The full standard workflow works end-to-end including the PR review loop.",
-      "tasks": ["22-phase-executor-poll", "23-pr-scripts", "24-remaining-prompts", "25-full-standard-workflow", "26-bugfix-workflow", "27-workflow-registry"],
+      "tasks": [
+        "22-phase-executor-poll",
+        "23-pr-scripts",
+        "24-remaining-prompts",
+        "25-full-standard-workflow",
+        "26-bugfix-workflow",
+        "27-workflow-registry"
+      ],
       "testableOutcome": "Run a ticket against a real repo, watch it create a PR, wait for review, address comments, and complete. Test the bugfix workflow variant."
     },
     "slice6": {
       "name": "Documentation & Skills",
       "goal": "The LLM planner can use skills to create plans from project management tools.",
-      "tasks": ["28-planner-skill", "29-workflow-skill", "30-linear-provider-skill", "31-github-issues-provider-skill", "32-claude-md-update"],
+      "tasks": [
+        "28-planner-skill",
+        "29-workflow-skill",
+        "30-linear-provider-skill",
+        "31-github-issues-provider-skill",
+        "32-claude-md-update"
+      ],
       "testableOutcome": "Point an interactive Claude Code session at the orchestrator repo, ask it to create a plan from GitHub Issues, and confirm it produces valid state files."
     }
   },
@@ -139,7 +175,12 @@
       "name": "Project Scaffolding",
       "slice": 0,
       "description": "Set up the TypeScript project foundation.",
-      "files": ["package.json", "tsconfig.json", ".gitignore", "orchestrator.yaml"],
+      "files": [
+        "package.json",
+        "tsconfig.json",
+        ".gitignore",
+        "orchestrator.yaml"
+      ],
       "dependsOn": [],
       "priority": 0,
       "estimatedComplexity": "low",
@@ -263,7 +304,11 @@
       "slice": 2,
       "description": "Executes script and terminal workflow phases. Agent and poll types stubbed as errors — added in tasks 16 and 22.",
       "files": ["src/phases/executor.ts"],
-      "dependsOn": ["03-config-loader", "07-shell-util", "08-template-renderer"],
+      "dependsOn": [
+        "03-config-loader",
+        "07-shell-util",
+        "08-template-renderer"
+      ],
       "priority": 2,
       "estimatedComplexity": "medium",
       "prompt": "Create `src/phases/executor.ts` — executes workflow phases by type. This version handles **script** and **terminal** only.\n\nImports: PhaseDefinition, TicketState, OrchestratorConfig from '../core/types.ts', execCommand from '../utils/shell.ts', resolveAgent from '../core/config.ts', TemplateRenderer from '../core/template.ts', Logger from '../utils/logger.ts'.\n\nExport:\n\n1. **PhaseResult** interface: { success: boolean, output: string, captured: Record<string, string>, nextPhase: string | null }\n\n2. **createPhaseExecutor(config: OrchestratorConfig, templateRenderer: TemplateRenderer, logger: Logger)** → PhaseExecutor\n\n3. **PhaseExecutor.execute(phase: PhaseDefinition, ticket: TicketState, planAgent: string | null): Promise<PhaseResult>**\n\n   **Script handler:** Resolve script path from config.scriptDir + phase.command. Interpolate args via templateRenderer.renderString. Run via execCommand with cwd=ticket.worktree. Success = exitCode 0. Run capture rules.\n\n   **Terminal handler:** Always succeeds. If phase.notify is true, flag it. nextPhase is always null.\n\n   **Agent/poll handlers:** Throw 'not yet implemented' errors (added in tasks 16/22).\n\n   **Capture logic:** For each key in phase.capture: if value is 'stdout', capture phase output; otherwise render value as shell command template, execute it, capture stdout.\n\n   **Next phase:** success → phase.onSuccess ?? null. Failure + 'retry' → phase.id. Failure + 'abort' → 'abort'. Otherwise → phase.onFailure ?? null."
@@ -274,7 +319,12 @@
       "slice": 2,
       "description": "Runs a single ticket through its workflow phases to completion. Daemon loop added in task 19.",
       "files": ["src/core/runner.ts"],
-      "dependsOn": ["04-state-manager", "05-logger", "09-workflow-loader", "12-phase-executor-script"],
+      "dependsOn": [
+        "04-state-manager",
+        "05-logger",
+        "09-workflow-loader",
+        "12-phase-executor-script"
+      ],
       "priority": 2,
       "estimatedComplexity": "medium",
       "prompt": "Create `src/core/runner.ts` — drives ticket execution. This version: single-ticket mode only.\n\nImports: types from './types.ts', loadConfig/resolveAgent from './config.ts', createStateManager from './state.ts', createWorkflowLoader from './workflow.ts', createTemplateRenderer from './template.ts', createPhaseExecutor/PhaseResult from '../phases/executor.ts', createLogger from '../utils/logger.ts'.\n\nExport:\n\n1. **createRunner(config: OrchestratorConfig)** — initializes all subsystems, returns Runner.\n\n2. **Runner.executeTicketPhase(ticket: TicketState): Promise<void>**\n   a. Load plan for planAgent\n   b. Load workflow, get current phase definition\n   c. Log phase start\n   d. Check retries vs maxRetries\n   e. Execute phase via PhaseExecutor\n   f. Log phase end with duration\n   g. Record in phaseHistory\n   h. Merge captured values into ticket.context\n   i. Determine next phase: retry → increment retries + stay ready; abort/null+failure → failed; terminal+notify → needs_attention; terminal → complete; otherwise → update currentPhase + ready\n   j. Save ticket state\n   k. Wrap in try/catch — unexpected errors → failed status\n\n3. **Runner.runSingleTicket(planId: string, ticketId: string): Promise<void>**\n   Blocking loop: load ticket → executeTicketPhase → check terminal status → repeat."
@@ -508,32 +558,68 @@
       "note": "Already complete."
     },
     "slice1_config_and_state": {
-      "tasks": ["03-config-loader", "04-state-manager", "05-logger", "06-cli-init-status"],
+      "tasks": [
+        "03-config-loader",
+        "04-state-manager",
+        "05-logger",
+        "06-cli-init-status"
+      ],
       "note": "03, 04, 05 in parallel → then 06",
       "testableOutcome": "orchestrator init + orchestrator status with hand-created state files"
     },
     "slice2_script_phases": {
-      "tasks": ["07-shell-util", "08-template-renderer", "09-workflow-loader", "10-minimal-workflow", "11-setup-worktree", "12-phase-executor-script", "13-runner-single-ticket", "14-cli-run"],
+      "tasks": [
+        "07-shell-util",
+        "08-template-renderer",
+        "09-workflow-loader",
+        "10-minimal-workflow",
+        "11-setup-worktree",
+        "12-phase-executor-script",
+        "13-runner-single-ticket",
+        "14-cli-run"
+      ],
       "note": "07, 08, 09, 10, 11 in parallel → 12 → 13 → 14",
       "testableOutcome": "orchestrator run executes a script phase and updates state"
     },
     "slice3_agent_phases": {
-      "tasks": ["15-agent-invoker", "16-phase-executor-agent", "17-implement-prompt", "18-standard-workflow"],
+      "tasks": [
+        "15-agent-invoker",
+        "16-phase-executor-agent",
+        "17-implement-prompt",
+        "18-standard-workflow"
+      ],
       "note": "15, 17 in parallel → 16. 18 independent",
       "testableOutcome": "orchestrator run invokes a coding agent and progresses through phases"
     },
     "slice4_daemon": {
-      "tasks": ["19-runner-daemon", "20-cli-daemon-commands", "21-cleanup-worktree"],
+      "tasks": [
+        "19-runner-daemon",
+        "20-cli-daemon-commands",
+        "21-cleanup-worktree"
+      ],
       "note": "19, 21 in parallel → 20",
       "testableOutcome": "orchestrator daemon processes tickets concurrently with dependency resolution"
     },
     "slice5_review_cycle": {
-      "tasks": ["22-phase-executor-poll", "23-pr-scripts", "24-remaining-prompts", "25-full-standard-workflow", "26-bugfix-workflow", "27-workflow-registry"],
+      "tasks": [
+        "22-phase-executor-poll",
+        "23-pr-scripts",
+        "24-remaining-prompts",
+        "25-full-standard-workflow",
+        "26-bugfix-workflow",
+        "27-workflow-registry"
+      ],
       "note": "22, 23, 24, 26 in parallel → 25 → 27",
       "testableOutcome": "Full workflows with PR review loops work end-to-end"
     },
     "slice6_docs_and_skills": {
-      "tasks": ["28-planner-skill", "29-workflow-skill", "30-linear-provider-skill", "31-github-issues-provider-skill", "32-claude-md-update"],
+      "tasks": [
+        "28-planner-skill",
+        "29-workflow-skill",
+        "30-linear-provider-skill",
+        "31-github-issues-provider-skill",
+        "32-claude-md-update"
+      ],
       "note": "All 5 in parallel. No code dependencies.",
       "testableOutcome": "LLM planner can create valid plans from project management tools"
     }

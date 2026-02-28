@@ -1,10 +1,10 @@
 # Shell Environment
 
-At the start of any coding session, load the correct Node version via nvm before running any commands:
+If `pnpm` is not found when running a command, load the correct Node version via nvm:
 ```sh
 source ~/.nvm/nvm.sh && nvm use
 ```
-This ensures the project's `.nvmrc` is respected. Run this once at session start.
+Only run this once per session and only if needed.
 
 # Another Orchestrator
 
