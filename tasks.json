@@ -114,9 +114,7 @@
       "id": "02-core-types",
       "name": "Zod Schemas & Types",
       "description": "Define all Zod schemas and TypeScript types that form the contract between all modules. This is the single source of truth for data shapes.",
-      "files": [
-        "src/core/types.ts"
-      ],
+      "files": ["src/core/types.ts"],
       "dependsOn": ["01-project-scaffolding"],
       "priority": 0,
       "estimatedComplexity": "medium",
@@ -126,9 +124,7 @@
       "id": "03-utils-shell",
       "name": "Shell Execution Utility",
       "description": "Subprocess execution wrapper for running bash scripts and CLI commands. Used by phase executor, capture logic, and agent invoker.",
-      "files": [
-        "src/utils/shell.ts"
-      ],
+      "files": ["src/utils/shell.ts"],
       "dependsOn": ["01-project-scaffolding"],
       "priority": 1,
       "estimatedComplexity": "low",
@@ -138,9 +134,7 @@
       "id": "04-utils-logger",
       "name": "Logger Utility",
       "description": "Per-ticket file logging plus console output with color. Each ticket gets its own log file, and the console shows a summary with phase transitions.",
-      "files": [
-        "src/utils/logger.ts"
-      ],
+      "files": ["src/utils/logger.ts"],
       "dependsOn": ["01-project-scaffolding"],
       "priority": 1,
       "estimatedComplexity": "low",
@@ -150,9 +144,7 @@
       "id": "05-core-config",
       "name": "Config Loader",
       "description": "Loads orchestrator.yaml, validates with Zod, resolves relative paths to absolute. Single source of runtime configuration.",
-      "files": [
-        "src/core/config.ts"
-      ],
+      "files": ["src/core/config.ts"],
       "dependsOn": ["02-core-types"],
       "priority": 1,
       "estimatedComplexity": "low",
@@ -162,9 +154,7 @@
       "id": "06-core-template",
       "name": "Template Renderer",
       "description": "Nunjucks-based template engine that renders prompt templates with ticket state variables and accumulated context.",
-      "files": [
-        "src/core/template.ts"
-      ],
+      "files": ["src/core/template.ts"],
       "dependsOn": ["02-core-types"],
       "priority": 1,
       "estimatedComplexity": "low",
@@ -174,9 +164,7 @@
       "id": "07-core-state",
       "name": "State Manager",
       "description": "Reads and writes plan and ticket state files from the state/ directory. Handles multi-plan scanning, dependency resolution, and status transitions.",
-      "files": [
-        "src/core/state.ts"
-      ],
+      "files": ["src/core/state.ts"],
       "dependsOn": ["02-core-types"],
       "priority": 1,
       "estimatedComplexity": "medium",
@@ -186,9 +174,7 @@
       "id": "08-core-workflow",
       "name": "Workflow Loader",
       "description": "Parses YAML workflow definition files, validates them, and provides lookup by name via the workflow registry.",
-      "files": [
-        "src/core/workflow.ts"
-      ],
+      "files": ["src/core/workflow.ts"],
       "dependsOn": ["02-core-types"],
       "priority": 1,
       "estimatedComplexity": "low",
@@ -198,9 +184,7 @@
       "id": "09-agents-invoke",
       "name": "Agent Invoker",
       "description": "Abstraction layer for invoking headless coding agents (Claude Code, Codex). Translates a common interface into provider-specific CLI calls.",
-      "files": [
-        "src/agents/invoke.ts"
-      ],
+      "files": ["src/agents/invoke.ts"],
       "dependsOn": ["02-core-types", "03-utils-shell"],
       "priority": 2,
       "estimatedComplexity": "medium",
@@ -210,10 +194,14 @@
       "id": "10-phases-executor",
       "name": "Phase Executor",
       "description": "Executes individual workflow phases by type (script, agent, poll, terminal). Handles capture logic, retries, and result reporting.",
-      "files": [
-        "src/phases/executor.ts"
+      "files": ["src/phases/executor.ts"],
+      "dependsOn": [
+        "02-core-types",
+        "03-utils-shell",
+        "05-core-config",
+        "06-core-template",
+        "09-agents-invoke"
       ],
-      "dependsOn": ["02-core-types", "03-utils-shell", "05-core-config", "06-core-template", "09-agents-invoke"],
       "priority": 3,
       "estimatedComplexity": "high",
       "prompt": "Create `src/phases/executor.ts` — executes individual workflow phases based on their type.\n\nImports from other modules:\n- Types: PhaseDefinition, TicketState, OrchestratorConfig from '../core/types.ts'\n- Shell: execCommand from '../utils/shell.ts'\n- Config: resolveAgent from '../core/config.ts'\n- Template: TemplateRenderer (the return type of createTemplateRenderer) from '../core/template.ts'\n- Agent: invokeAgent, AgentResult from '../agents/invoke.ts'\n- Logger: Logger type from '../utils/logger.ts'\n\nExport the following:\n\n1. **PhaseResult** interface:\n   ```typescript\n   {\n     success: boolean;\n     output: string;           // stdout or summary\n     captured: Record<string, string>;  // Values captured by capture rules\n     nextPhase: string | null; // Suggested next phase (from onSuccess/onFailure)\n   }\n   ```\n\n2. **createPhaseExecutor(config: OrchestratorConfig, templateRenderer: TemplateRenderer, logger: Logger)** — factory returning a PhaseExecutor.\n\n3. **PhaseExecutor** with method:\n   - **execute(phase: PhaseDefinition, ticket: TicketState, planAgent: string | null): Promise<PhaseResult>**\n\n   Dispatches to the appropriate handler based on phase.type:\n\n   **Script phase handler:**\n   - Resolves script path: `config.scriptDir + '/' + phase.command`\n   - Interpolates args by rendering each arg string through templateRenderer.renderString with the ticket\n   - Runs via execCommand with cwd set to the ticket's worktree\n   - Success = exitCode 0\n   - Runs capture rules after execution\n\n   **Agent phase handler:**\n   - Renders the prompt template via templateRenderer.render(phase.promptTemplate, ticket)\n   - Resolves the agent via resolveAgent(config, phase.agent, ticket.agent, planAgent)\n   - Invokes via invokeAgent with the resolved config\n   - Passes logger.agentOutput as the onOutput callback\n   - Success = agent exitCode 0\n   - Runs capture rules after execution\n\n   **Poll phase handler:**\n   - Runs the poll command at intervalSeconds intervals\n   - Continues until: command exits 0 (success), or timeoutSeconds exceeded (failure)\n   - Between polls, waits using a simple setTimeout/sleep\n   - Interpolates args same as script phase\n   - Runs capture rules on the final successful execution\n\n   **Terminal phase handler:**\n   - Always succeeds\n   - If phase.notify is true, returns a flag (the runner will set ticket status to 'needs_attention')\n   - nextPhase is always null\n\n   **Capture logic (shared across non-terminal phases):**\n   - For each key in phase.capture:\n     - If value is 'stdout': capture the phase's stdout output\n     - Otherwise: treat value as a shell command template, render it with the ticket context, execute it, capture its stdout\n   - Returns all captured values in the result\n\n   **Next phase resolution:**\n   - If success: nextPhase = phase.onSuccess ?? null\n   - If failure and phase.onFailure === 'retry': nextPhase = phase.id (re-run same phase)\n   - If failure and phase.onFailure === 'abort': nextPhase = 'abort' (special value)\n   - Otherwise: nextPhase = phase.onFailure ?? null"
@@ -222,10 +210,16 @@
       "id": "11-core-runner",
       "name": "Runner / State Machine",
       "description": "The main state machine engine. Implements the daemon loop that scans plans, picks up ready tickets, executes phases, and manages transitions.",
-      "files": [
-        "src/core/runner.ts"
+      "files": ["src/core/runner.ts"],
+      "dependsOn": [
+        "02-core-types",
+        "04-utils-logger",
+        "05-core-config",
+        "06-core-template",
+        "07-core-state",
+        "08-core-workflow",
+        "10-phases-executor"
       ],
-      "dependsOn": ["02-core-types", "04-utils-logger", "05-core-config", "06-core-template", "07-core-state", "08-core-workflow", "10-phases-executor"],
       "priority": 4,
       "estimatedComplexity": "high",
       "prompt": "Create `src/core/runner.ts` — the core state machine that drives ticket execution.\n\nImports from other modules:\n- Types: OrchestratorConfig, TicketState, PlanFile from './types.ts'\n- Config: loadConfig, resolveAgent from './config.ts'\n- State: createStateManager, StateManager from './state.ts'\n- Workflow: createWorkflowLoader, WorkflowLoader from './workflow.ts'\n- Template: createTemplateRenderer, TemplateRenderer from './template.ts'\n- Phases: createPhaseExecutor, PhaseExecutor, PhaseResult from '../phases/executor.ts'\n- Logger: createLogger, Logger from '../utils/logger.ts'\n\nExport the following:\n\n1. **createRunner(config: OrchestratorConfig)** — factory that initializes all subsystems and returns a Runner.\n\n2. **Runner** object with methods:\n\n   **tick(): Promise<void>**\n   The core single-tick logic:\n   a. Resolve dependencies across all active plans (transition queued → ready where blockers complete)\n   b. Get count of currently running tickets\n   c. Get all ready tickets across active plans\n   d. For each ready ticket (up to maxConcurrency - runningCount):\n      - Set ticket status to 'running'\n      - Start executing the ticket's current phase (don't await — run concurrently)\n   e. The tick itself returns after dispatching. Phase execution is fire-and-forget within the tick.\n\n   **executeTicketPhase(ticket: TicketState): Promise<void>**\n   Executes the current phase of a ticket:\n   a. Load the plan to get planAgent\n   b. Load the workflow and get the current phase definition\n   c. Log phase start\n   d. Check retries: if this phase has exceeded maxRetries, transition to onFailure or 'failed'\n   e. Execute the phase via PhaseExecutor\n   f. Log phase end (with duration)\n   g. Record phase in phaseHistory\n   h. Merge captured values into ticket.context\n   i. Determine next phase:\n      - If result.nextPhase === 'retry': increment retries[phaseId], keep currentPhase the same, set status back to 'ready'\n      - If result.nextPhase === 'abort' or null with failure: set status to 'failed'\n      - If result.nextPhase is a terminal phase with notify: set status to 'needs_attention'\n      - If result.nextPhase is a terminal phase without notify: set status to 'complete'\n      - Otherwise: update currentPhase to nextPhase, set status to 'ready' (so next tick picks it up)\n   j. Save the updated ticket state\n   k. Wrap everything in try/catch — on unexpected error, set ticket to 'failed' with error message\n\n   **runSingleTicket(planId: string, ticketId: string): Promise<void>**\n   Runs a single ticket to completion (blocking). Loops: execute phase, check if terminal, repeat. Used by `orchestrator run` command.\n\n   **startDaemon(options?: { signal?: AbortSignal }): Promise<void>**\n   Runs tick() in a loop with config.pollInterval seconds between ticks. Respects AbortSignal for graceful shutdown. Logs each tick start.\n\nKey design decisions:\n- Phase execution within a tick is concurrent (Promise.all for dispatched tickets)\n- But a single ticket's phases are sequential (one phase at a time)\n- The runner never makes judgment calls — it follows workflow transitions deterministically\n- On any unexpected error, the ticket goes to 'failed' status, never silently drops\n- Use a Set<string> to track in-flight ticket IDs to prevent double-dispatch"
@@ -234,10 +228,13 @@
       "id": "12-cli",
       "name": "CLI Entry Point",
       "description": "Commander-based CLI with all orchestrator commands: init, daemon, run, tick, status, pause, resume, skip, retry, and plan-level commands.",
-      "files": [
-        "src/cli.ts"
+      "files": ["src/cli.ts"],
+      "dependsOn": [
+        "02-core-types",
+        "05-core-config",
+        "07-core-state",
+        "11-core-runner"
       ],
-      "dependsOn": ["02-core-types", "05-core-config", "07-core-state", "11-core-runner"],
       "priority": 5,
       "estimatedComplexity": "medium",
       "prompt": "Create `src/cli.ts` — the Commander-based CLI entry point for the orchestrator.\n\nImports:\n- commander: Command from 'commander'\n- Config: loadConfig from './core/config.ts'\n- State: createStateManager from './core/state.ts'\n- Runner: createRunner from './core/runner.ts'\n- Logger: createLogger from './utils/logger.ts'\n- chalk for colored output\n- fs/promises and path as needed\n\nSet up the CLI program:\n```typescript\nconst program = new Command()\n  .name('orchestrator')\n  .description('Agent orchestrator — deterministic state machine for autonomous software development')\n  .version('0.1.0');\n```\n\nImplement these commands:\n\n**orchestrator init**\n- Scaffolds the directory structure: state/, logs/, workflows/, prompts/, scripts/, skills/\n- Copies default orchestrator.yaml if it doesn't exist\n- Prints a summary of created directories\n\n**orchestrator daemon [--concurrency <n>] [--agent <name>]**\n- Loads config, optionally overrides maxConcurrency and defaultAgent from CLI flags\n- Creates runner and calls startDaemon()\n- Sets up SIGINT/SIGTERM handlers for graceful shutdown via AbortController\n- Prints 'Daemon started, polling every Ns' message\n\n**orchestrator run <planId> <ticketId>**\n- Loads config, creates runner, calls runSingleTicket(planId, ticketId)\n- Blocks until the ticket reaches a terminal state\n- Prints final status\n\n**orchestrator tick**\n- Loads config, creates runner, calls tick() once, then exits\n\n**orchestrator status [--plan <planId>] [--json]**\n- Loads all plans and their tickets from state manager\n- Without --json: prints a formatted table showing plan name, ticket ID, status, current phase\n- With --json: outputs raw JSON\n- With --plan: filters to just that plan\n- Use chalk for colored status indicators (green=complete, yellow=running, red=failed, gray=queued)\n\n**orchestrator pause <planId> <ticketId>**\n- Sets ticket status to 'paused' via state manager\n\n**orchestrator resume <planId> <ticketId>**\n- Sets ticket status to 'ready' (so next tick picks it up)\n\n**orchestrator skip <planId> <ticketId> <phase>**\n- Sets ticket's currentPhase to the specified phase, status to 'ready'\n\n**orchestrator retry <planId> <ticketId>**\n- Resets the retry counter for the current phase, sets status to 'ready'\n\n**orchestrator pause-plan <planId>**\n- Sets plan status to 'paused'\n\n**orchestrator resume-plan <planId>**\n- Sets plan status to 'active'\n\nEnd with `program.parse()`. Add `#!/usr/bin/env node` at the top for the bin entry point.\n\nKeep each command handler concise — load config, create the relevant manager, do the operation, print result."
@@ -246,9 +243,7 @@
       "id": "13-workflow-standard",
       "name": "Standard Workflow YAML",
       "description": "The default 'standard' workflow YAML defining the full pipeline: setup → implement → self_review → simplify → verify → create_pr → review cycle → merge → cleanup → complete.",
-      "files": [
-        "workflows/standard.yaml"
-      ],
+      "files": ["workflows/standard.yaml"],
       "dependsOn": [],
       "priority": 1,
       "estimatedComplexity": "medium",
@@ -258,9 +253,7 @@
       "id": "14-workflow-bugfix",
       "name": "Bugfix Workflow YAML",
       "description": "Abbreviated workflow for bug fixes that skips self-review and simplify phases.",
-      "files": [
-        "workflows/bugfix.yaml"
-      ],
+      "files": ["workflows/bugfix.yaml"],
       "dependsOn": [],
       "priority": 1,
       "estimatedComplexity": "low",
@@ -270,10 +263,7 @@
       "id": "15-workflow-registry",
       "name": "Workflow Registry & Docs",
       "description": "The workflow registry YAML that lists available workflows, plus a README documenting the phase type reference for workflow authors.",
-      "files": [
-        "workflows/registry.yaml",
-        "workflows/README.md"
-      ],
+      "files": ["workflows/registry.yaml", "workflows/README.md"],
       "dependsOn": [],
       "priority": 1,
       "estimatedComplexity": "low",
@@ -317,9 +307,7 @@
       "id": "18-docs-claude-md",
       "name": "CLAUDE.md & Project Documentation",
       "description": "The orchestrator repo's own CLAUDE.md with progressive disclosure, orienting both coding agents and the LLM planner.",
-      "files": [
-        "CLAUDE.md"
-      ],
+      "files": ["CLAUDE.md"],
       "dependsOn": [],
       "priority": 2,
       "estimatedComplexity": "medium",
@@ -348,11 +336,27 @@
       "note": "Must complete first — creates package.json and installs deps"
     },
     "tier1_types_and_content": {
-      "tasks": ["02-core-types", "13-workflow-standard", "14-workflow-bugfix", "15-workflow-registry", "16-prompt-templates", "17-bash-scripts", "18-docs-claude-md", "19-docs-skills"],
+      "tasks": [
+        "02-core-types",
+        "13-workflow-standard",
+        "14-workflow-bugfix",
+        "15-workflow-registry",
+        "16-prompt-templates",
+        "17-bash-scripts",
+        "18-docs-claude-md",
+        "19-docs-skills"
+      ],
       "note": "Types depend on scaffolding. All content tasks (13-19) have zero code deps and can start immediately."
     },
     "tier2_utilities_and_core": {
-      "tasks": ["03-utils-shell", "04-utils-logger", "05-core-config", "06-core-template", "07-core-state", "08-core-workflow"],
+      "tasks": [
+        "03-utils-shell",
+        "04-utils-logger",
+        "05-core-config",
+        "06-core-template",
+        "07-core-state",
+        "08-core-workflow"
+      ],
       "note": "All depend on types. Shell and logger also depend on scaffolding. Can all run in parallel."
     },
     "tier3_agents": {
