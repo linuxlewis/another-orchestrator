@@ -1,0 +1,27 @@
+{
+  "name": "another-orchestrator",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "orchestrator": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "chokidar": "^4.0.3",
+    "commander": "^13.1.0",
+    "nunjucks": "^3.2.4",
+    "yaml": "^2.7.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/nunjucks": "^3.2.6",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}
