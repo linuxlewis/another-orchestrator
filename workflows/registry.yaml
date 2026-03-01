@@ -1,0 +1,7 @@
+workflows:
+  - name: minimal
+    file: minimal.yaml
+    description: "Minimal workflow with a single script phase"
+    tags:
+      - test
+      - minimal

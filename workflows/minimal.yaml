@@ -1,0 +1,22 @@
+name: minimal
+description: "Minimal workflow: run a script, then complete or abort"
+
+phases:
+  - id: run_script
+    type: script
+    command: run.sh
+    args:
+      - "{{ branch }}"
+      - "{{ worktree }}"
+    maxRetries: 2
+    capture:
+      script_output: stdout
+    onSuccess: complete
+    onFailure: abort
+
+  - id: complete
+    type: terminal
+
+  - id: abort
+    type: terminal
+    notify: true

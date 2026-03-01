@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import chalk from "chalk";
 import { Command } from "commander";
 import { loadConfig } from "./core/config.js";
+import { createRunner } from "./core/runner.js";
 import { createStateManager } from "./core/state.js";
 import { createLogger } from "./utils/logger.js";
 
@@ -104,6 +105,41 @@ program
       console.log(
         `  ${plan.id} — ${colorStatus(plan.status)} — ${plan.name} (${completed}/${tickets.length} tickets)`,
       );
+    }
+  });
+
+program
+  .command("run")
+  .description("Run a single ticket through its workflow")
+  .argument("<planId>", "Plan ID")
+  .argument("<ticketId>", "Ticket ID")
+  .action(async (planId: string, ticketId: string) => {
+    const config = await loadConfig();
+    const runner = createRunner(config);
+
+    console.log(
+      chalk.bold(
+        `Running ticket ${chalk.cyan(ticketId)} from plan ${chalk.cyan(planId)}...`,
+      ),
+    );
+    console.log();
+
+    try {
+      const result = await runner.runSingleTicket(planId, ticketId);
+      console.log();
+      console.log(
+        chalk.bold(`Ticket ${result.ticketId}: ${colorStatus(result.status)}`),
+      );
+      if (result.error) {
+        console.log(chalk.red(`  Error: ${result.error}`));
+      }
+      if (result.status === "failed" || result.status === "needs_attention") {
+        process.exitCode = 1;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`Error: ${msg}`));
+      process.exitCode = 1;
     }
   });
 
