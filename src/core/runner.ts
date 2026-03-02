@@ -12,8 +12,22 @@ export interface Runner {
   startDaemon(options?: { signal?: AbortSignal }): Promise<void>;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 export function createRunner(config: OrchestratorConfig): Runner {
@@ -25,7 +39,9 @@ export function createRunner(config: OrchestratorConfig): Runner {
 
   const inFlight = new Set<string>();
 
-  async function executeTicketPhase(ticket: TicketState): Promise<TicketState> {
+  async function executeTicketPhase(
+    ticket: TicketState,
+  ): Promise<{ ticket: TicketState; pendingPoll: boolean }> {
     const plan = await stateManager.getPlan(ticket.planId);
     const planAgent = plan?.agent ?? null;
 
@@ -41,10 +57,15 @@ export function createRunner(config: OrchestratorConfig): Runner {
         `Phase "${ticket.currentPhase}" exceeded maxRetries (${phase.maxRetries})`,
         ticket.ticketId,
       );
-      return stateManager.updateTicket(ticket.planId, ticket.ticketId, {
-        status: "failed",
-        error: `Phase "${ticket.currentPhase}" exceeded maxRetries (${phase.maxRetries})`,
-      });
+      const updated = await stateManager.updateTicket(
+        ticket.planId,
+        ticket.ticketId,
+        {
+          status: "failed",
+          error: `Phase "${ticket.currentPhase}" exceeded maxRetries (${phase.maxRetries})`,
+        },
+      );
+      return { ticket: updated, pendingPoll: false };
     }
 
     const startedAt = new Date().toISOString();
@@ -67,11 +88,82 @@ export function createRunner(config: OrchestratorConfig): Runner {
         output: errorMsg,
       };
 
-      return stateManager.updateTicket(ticket.planId, ticket.ticketId, {
-        status: "failed",
-        error: errorMsg,
-        phaseHistory: [...ticket.phaseHistory, historyEntry],
-      });
+      const updated = await stateManager.updateTicket(
+        ticket.planId,
+        ticket.ticketId,
+        {
+          status: "failed",
+          error: errorMsg,
+          phaseHistory: [...ticket.phaseHistory, historyEntry],
+        },
+      );
+      return { ticket: updated, pendingPoll: false };
+    }
+
+    // Handle pending poll — re-queue without history noise or retry increment
+    if (result.pending) {
+      const pollStartKey = `_pollStart_${ticket.currentPhase}`;
+      const newContext = { ...ticket.context };
+
+      // Store poll start time on first pending result
+      if (!newContext[pollStartKey]) {
+        newContext[pollStartKey] = startedAt;
+      }
+
+      // Check poll timeout
+      const timeoutMs = (phase.timeoutSeconds ?? 86400) * 1000;
+      const pollStartTime = new Date(newContext[pollStartKey]).getTime();
+      if (Date.now() - pollStartTime >= timeoutMs) {
+        logger.phaseEnd(ticket.currentPhase, ticket.ticketId, "failure");
+        logger.error(
+          `Poll "${ticket.currentPhase}" timed out`,
+          ticket.ticketId,
+        );
+
+        const completedAt = new Date().toISOString();
+        const historyEntry = {
+          phase: ticket.currentPhase,
+          status: "failure" as const,
+          startedAt: newContext[pollStartKey],
+          completedAt,
+          output: "Poll timeout exceeded",
+        };
+
+        const updated = await stateManager.updateTicket(
+          ticket.planId,
+          ticket.ticketId,
+          {
+            status: "failed",
+            error: "Poll timeout exceeded",
+            phaseHistory: [...ticket.phaseHistory, historyEntry],
+            context: newContext,
+          },
+        );
+        return { ticket: updated, pendingPoll: false };
+      }
+
+      // Not timed out — set back to ready for next tick
+      // Store next check time to enforce intervalSeconds
+      const intervalMs = (phase.intervalSeconds ?? config.pollInterval) * 1000;
+      const nextCheckKey = `_pollNextCheck_${ticket.currentPhase}`;
+      newContext[nextCheckKey] = new Date(
+        Date.now() + intervalMs,
+      ).toISOString();
+
+      logger.info(
+        `Poll "${ticket.currentPhase}" not ready, will retry in ${phase.intervalSeconds ?? config.pollInterval}s`,
+        ticket.ticketId,
+      );
+      const updated = await stateManager.updateTicket(
+        ticket.planId,
+        ticket.ticketId,
+        {
+          status: "ready",
+          context: newContext,
+          error: null,
+        },
+      );
+      return { ticket: updated, pendingPoll: true };
     }
 
     const completedAt = new Date().toISOString();
@@ -98,16 +190,31 @@ export function createRunner(config: OrchestratorConfig): Runner {
     // Merge captured values into context
     const newContext = { ...ticket.context, ...result.captured };
 
+    // Clear poll metadata if we're leaving a poll phase
+    const pollStartKey = `_pollStart_${ticket.currentPhase}`;
+    const pollNextCheckKey = `_pollNextCheck_${ticket.currentPhase}`;
+    if (newContext[pollStartKey]) {
+      delete newContext[pollStartKey];
+    }
+    if (newContext[pollNextCheckKey]) {
+      delete newContext[pollNextCheckKey];
+    }
+
     // Determine next state
     if (phase.type === "terminal") {
       // Terminal phase → complete or needs_attention
       const newStatus = phase.notify ? "needs_attention" : "complete";
-      return stateManager.updateTicket(ticket.planId, ticket.ticketId, {
-        status: newStatus,
-        phaseHistory: [...ticket.phaseHistory, historyEntry],
-        context: newContext,
-        error: null,
-      });
+      const updated = await stateManager.updateTicket(
+        ticket.planId,
+        ticket.ticketId,
+        {
+          status: newStatus,
+          phaseHistory: [...ticket.phaseHistory, historyEntry],
+          context: newContext,
+          error: null,
+        },
+      );
+      return { ticket: updated, pendingPoll: false };
     }
 
     if (result.nextPhase === ticket.currentPhase) {
@@ -116,54 +223,70 @@ export function createRunner(config: OrchestratorConfig): Runner {
         ...ticket.retries,
         [ticket.currentPhase]: currentRetries + 1,
       };
-      return stateManager.updateTicket(ticket.planId, ticket.ticketId, {
-        status: "ready",
-        phaseHistory: [...ticket.phaseHistory, historyEntry],
-        context: newContext,
-        retries: newRetries,
-        error: null,
-      });
+      const updated = await stateManager.updateTicket(
+        ticket.planId,
+        ticket.ticketId,
+        {
+          status: "ready",
+          phaseHistory: [...ticket.phaseHistory, historyEntry],
+          context: newContext,
+          retries: newRetries,
+          error: null,
+        },
+      );
+      return { ticket: updated, pendingPoll: false };
     }
 
     if (result.nextPhase) {
       // Advance to next phase
-      return stateManager.updateTicket(ticket.planId, ticket.ticketId, {
-        currentPhase: result.nextPhase,
-        status: "ready",
-        phaseHistory: [...ticket.phaseHistory, historyEntry],
-        context: newContext,
-        error: null,
-      });
+      const updated = await stateManager.updateTicket(
+        ticket.planId,
+        ticket.ticketId,
+        {
+          currentPhase: result.nextPhase,
+          status: "ready",
+          phaseHistory: [...ticket.phaseHistory, historyEntry],
+          context: newContext,
+          error: null,
+        },
+      );
+      return { ticket: updated, pendingPoll: false };
     }
 
     // No next phase and not terminal — phase didn't define a transition
-    return stateManager.updateTicket(ticket.planId, ticket.ticketId, {
-      status: result.success ? "complete" : "failed",
-      phaseHistory: [...ticket.phaseHistory, historyEntry],
-      context: newContext,
-      error: result.success ? null : "Phase failed without a next phase",
-    });
+    const updated = await stateManager.updateTicket(
+      ticket.planId,
+      ticket.ticketId,
+      {
+        status: result.success ? "complete" : "failed",
+        phaseHistory: [...ticket.phaseHistory, historyEntry],
+        context: newContext,
+        error: result.success ? null : "Phase failed without a next phase",
+      },
+    );
+    return { ticket: updated, pendingPoll: false };
   }
 
   async function runTicketPhases(ticket: TicketState): Promise<TicketState> {
     let current = ticket;
 
     while (true) {
-      current = await executeTicketPhase(current);
+      const { ticket: updated, pendingPoll } =
+        await executeTicketPhase(current);
 
       // Re-read from disk for consistency
-      const updated = await stateManager.getTicket(
-        current.planId,
-        current.ticketId,
+      const fromDisk = await stateManager.getTicket(
+        updated.planId,
+        updated.ticketId,
       );
-      if (!updated) {
+      if (!fromDisk) {
         throw new Error(
-          `Ticket "${current.ticketId}" disappeared during execution`,
+          `Ticket "${updated.ticketId}" disappeared during execution`,
         );
       }
-      current = updated;
+      current = fromDisk;
 
-      // Check if we reached a terminal state
+      // Check if we reached a terminal or yielding state
       if (
         current.status === "complete" ||
         current.status === "failed" ||
@@ -173,6 +296,11 @@ export function createRunner(config: OrchestratorConfig): Runner {
           `Ticket ${current.ticketId} finished with status: ${current.status}`,
           current.ticketId,
         );
+        break;
+      }
+
+      // Pending poll — yield back to daemon loop for re-dispatch
+      if (pendingPoll) {
         break;
       }
     }
@@ -212,10 +340,18 @@ export function createRunner(config: OrchestratorConfig): Runner {
       // 3. Get ready tickets
       const readyTickets = await stateManager.getReadyTickets();
 
-      // 4. Filter out tickets already in-flight
-      const dispatchable = readyTickets.filter(
-        (t) => !inFlight.has(`${t.planId}/${t.ticketId}`),
-      );
+      // 4. Filter out tickets already in-flight or waiting on poll interval
+      const now = Date.now();
+      const dispatchable = readyTickets.filter((t) => {
+        if (inFlight.has(`${t.planId}/${t.ticketId}`)) return false;
+
+        // Respect poll intervalSeconds — skip if next check time is in the future
+        const nextCheckKey = `_pollNextCheck_${t.currentPhase}`;
+        const nextCheck = t.context[nextCheckKey];
+        if (nextCheck && new Date(nextCheck).getTime() > now) return false;
+
+        return true;
+      });
 
       // 5. Dispatch up to available concurrency slots
       const available = config.maxConcurrency - runningCount - inFlight.size;
@@ -257,7 +393,7 @@ export function createRunner(config: OrchestratorConfig): Runner {
 
       while (!options?.signal?.aborted) {
         await this.tick();
-        await sleep(config.pollInterval * 1000);
+        await sleep(config.pollInterval * 1000, options?.signal);
       }
 
       logger.info("Daemon stopped");
