@@ -1,5 +1,5 @@
-name: standard
-description: "Standard workflow: setup, implement, review, simplify, verify, create PR, review cycle, merge, cleanup"
+name: bugfix
+description: "Bugfix workflow: setup, implement fix, verify, create PR, review cycle, merge, cleanup"
 
 phases:
   - id: setup
@@ -16,29 +16,11 @@ phases:
 
   - id: implement
     type: agent
-    promptTemplate: implement.md
+    promptTemplate: implement-bugfix.md
+    maxTurns: 30
     maxRetries: 1
-    onSuccess: self_review
-    onFailure: escalate
-
-  - id: self_review
-    type: agent
-    promptTemplate: self-review.md
-    allowedTools:
-      - Read
-      - Glob
-      - Grep
-      - Bash
-    maxTurns: 15
-    onSuccess: simplify
-    onFailure: implement
-
-  - id: simplify
-    type: agent
-    promptTemplate: simplify.md
-    maxTurns: 20
     onSuccess: verify
-    onFailure: verify
+    onFailure: escalate
 
   - id: verify
     type: agent
@@ -66,6 +48,16 @@ phases:
       - "{{ context.pr_number }}"
     intervalSeconds: 60
     timeoutSeconds: 86400
+    capture:
+      review_state: stdout
+    onSuccess: route_review
+    onFailure: escalate
+
+  - id: route_review
+    type: script
+    command: route-review.sh
+    args:
+      - "{{ context.review_state }}"
     onSuccess: await_merge
     onFailure: handle_review
 

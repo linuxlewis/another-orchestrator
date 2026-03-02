@@ -8,7 +8,14 @@ workflows:
 
   - name: standard
     file: standard.yaml
-    description: "Standard workflow: setup, implement, verify, create PR, await merge, cleanup"
+    description: "Standard workflow: setup, implement, self-review, simplify, verify, create PR, review cycle, merge, cleanup"
     tags:
       - standard
+      - agent
+
+  - name: bugfix
+    file: bugfix.yaml
+    description: "Bugfix workflow: minimal-change fix, verify, create PR, review cycle, merge, cleanup"
+    tags:
+      - bugfix
       - agent

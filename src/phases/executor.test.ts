@@ -367,21 +367,152 @@ describe("executor", () => {
     });
   });
 
-  describe("unsupported phases", () => {
-    it("throws for poll phase", async () => {
+  describe("poll phase", () => {
+    it("polls until script succeeds", async () => {
+      const counterFile = join(tmpDir, "counter");
+      await writeFile(counterFile, "0");
+
+      await writeFile(
+        join(scriptDir, "poll-counter.sh"),
+        `#!/usr/bin/env bash
+COUNTER_FILE="$1"
+COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo "0")
+COUNT=$((COUNT + 1))
+echo "$COUNT" > "$COUNTER_FILE"
+if [ "$COUNT" -ge 3 ]; then
+  echo "ready"
+  exit 0
+fi
+exit 1`,
+        { mode: 0o755 },
+      );
+
+      const phase: PhaseDefinition = {
+        id: "poll_phase",
+        type: "poll",
+        command: "poll-counter.sh",
+        args: [counterFile],
+        intervalSeconds: 0.05,
+        timeoutSeconds: 5,
+        maxRetries: 0,
+        notify: false,
+        onSuccess: "next",
+        onFailure: "fail",
+      };
+
+      const renderer = createTemplateRenderer(promptDir);
+      const executor = createPhaseExecutor(config, renderer, logger);
+      const result = await executor.execute(phase, makeTicket(), null);
+
+      expect(result.success).toBe(true);
+      expect(result.output.trim()).toBe("ready");
+      expect(result.nextPhase).toBe("next");
+    });
+
+    it("returns failure on timeout", async () => {
+      await writeFile(
+        join(scriptDir, "always-wait.sh"),
+        "#!/usr/bin/env bash\nexit 1",
+        { mode: 0o755 },
+      );
+
+      const phase: PhaseDefinition = {
+        id: "poll_phase",
+        type: "poll",
+        command: "always-wait.sh",
+        args: [],
+        intervalSeconds: 0.05,
+        timeoutSeconds: 0.2,
+        maxRetries: 0,
+        notify: false,
+        onSuccess: "next",
+        onFailure: "timeout_fail",
+      };
+
+      const renderer = createTemplateRenderer(promptDir);
+      const executor = createPhaseExecutor(config, renderer, logger);
+      const result = await executor.execute(phase, makeTicket(), null);
+
+      expect(result.success).toBe(false);
+      expect(result.output).toContain("timeout");
+      expect(result.nextPhase).toBe("timeout_fail");
+    });
+
+    it("returns failure immediately on exit code >= 2", async () => {
+      await writeFile(
+        join(scriptDir, "hard-error.sh"),
+        '#!/usr/bin/env bash\necho "fatal error"\nexit 2',
+        { mode: 0o755 },
+      );
+
+      const phase: PhaseDefinition = {
+        id: "poll_phase",
+        type: "poll",
+        command: "hard-error.sh",
+        args: [],
+        intervalSeconds: 0.1,
+        timeoutSeconds: 10,
+        maxRetries: 0,
+        notify: false,
+        onSuccess: "next",
+        onFailure: "error_handler",
+      };
+
+      const renderer = createTemplateRenderer(promptDir);
+      const executor = createPhaseExecutor(config, renderer, logger);
+      const result = await executor.execute(phase, makeTicket(), null);
+
+      expect(result.success).toBe(false);
+      expect(result.output).toContain("fatal error");
+      expect(result.nextPhase).toBe("error_handler");
+    });
+
+    it("captures values on successful poll", async () => {
+      await writeFile(
+        join(scriptDir, "poll-capture.sh"),
+        '#!/usr/bin/env bash\necho "captured_poll_value"\nexit 0',
+        { mode: 0o755 },
+      );
+
+      const phase: PhaseDefinition = {
+        id: "poll_phase",
+        type: "poll",
+        command: "poll-capture.sh",
+        args: [],
+        intervalSeconds: 0.1,
+        timeoutSeconds: 10,
+        maxRetries: 0,
+        notify: false,
+        capture: { poll_result: "stdout" },
+        onSuccess: "next",
+        onFailure: "fail",
+      };
+
+      const renderer = createTemplateRenderer(promptDir);
+      const executor = createPhaseExecutor(config, renderer, logger);
+      const result = await executor.execute(phase, makeTicket(), null);
+
+      expect(result.success).toBe(true);
+      expect(result.captured.poll_result).toContain("captured_poll_value");
+    });
+
+    it("returns failure when command is missing", async () => {
       const phase: PhaseDefinition = {
         id: "poll_phase",
         type: "poll",
         args: [],
         maxRetries: 0,
         notify: false,
+        onFailure: "abort",
       };
 
       const renderer = createTemplateRenderer(promptDir);
       const executor = createPhaseExecutor(config, renderer, logger);
-      await expect(executor.execute(phase, makeTicket(), null)).rejects.toThrow(
-        "Poll phases are not yet implemented",
-      );
+      const result = await executor.execute(phase, makeTicket(), null);
+
+      expect(result.success).toBe(false);
+      expect(result.output).toContain("missing command");
+      expect(result.nextPhase).toBe("abort");
     });
   });
 
