@@ -64,24 +64,7 @@ export function createRunner(config: OrchestratorConfig): Runner {
   ): Promise<{ ticket: TicketState; pendingPoll: boolean }> {
     const log = logger.child({ ticketId: ticket.ticketId });
 
-    // Re-read ticket and plan status from disk before executing
-    const freshTicket = await stateManager.getTicket(
-      ticket.planId,
-      ticket.ticketId,
-    );
-    if (freshTicket?.status === "paused") {
-      return { ticket: freshTicket, pendingPoll: false };
-    }
     const plan = await stateManager.getPlan(ticket.planId);
-    if (plan?.status === "paused") {
-      const paused = await stateManager.updateTicket(
-        ticket.planId,
-        ticket.ticketId,
-        { status: "paused" },
-      );
-      return { ticket: paused, pendingPoll: false };
-    }
-
     const planAgent = plan?.agent ?? null;
 
     // Resolve ticket repo from plan if not set on the ticket
@@ -118,14 +101,9 @@ export function createRunner(config: OrchestratorConfig): Runner {
         signal,
       });
 
-      // If aborted mid-phase, set ticket to paused and return early
+      // If aborted mid-phase, skip result processing
       if (signal?.aborted) {
-        const paused = await stateManager.updateTicket(
-          ticket.planId,
-          ticket.ticketId,
-          { status: "paused" },
-        );
-        return { ticket: paused, pendingPoll: false };
+        return { ticket, pendingPoll: false };
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -310,6 +288,30 @@ export function createRunner(config: OrchestratorConfig): Runner {
     return { ticket: updated, pendingPoll: false };
   }
 
+  async function markPausedIfNeeded(
+    current: TicketState,
+    signal?: AbortSignal,
+  ): Promise<TicketState | null> {
+    if (current.status === "paused") return current;
+
+    // Only running or ready tickets can be paused — don't overwrite terminal states
+    if (current.status !== "running" && current.status !== "ready") return null;
+
+    const shouldPause =
+      signal?.aborted ||
+      (await stateManager.getTicket(current.planId, current.ticketId))
+        ?.status === "paused" ||
+      (await stateManager.getPlan(current.planId))?.status === "paused";
+
+    if (shouldPause) {
+      return await stateManager.updateTicket(current.planId, current.ticketId, {
+        status: "paused",
+      });
+    }
+
+    return null;
+  }
+
   async function runTicketPhases(
     ticket: TicketState,
     signal?: AbortSignal,
@@ -317,15 +319,9 @@ export function createRunner(config: OrchestratorConfig): Runner {
     let current = ticket;
 
     while (true) {
-      // Check if aborted before starting next phase
-      if (signal?.aborted) {
-        const paused = await stateManager.updateTicket(
-          current.planId,
-          current.ticketId,
-          { status: "paused" },
-        );
-        return paused;
-      }
+      // Single pause checkpoint before each phase
+      const paused = await markPausedIfNeeded(current, signal);
+      if (paused) return paused;
 
       const { ticket: updated, pendingPoll } = await executeTicketPhase(
         current,
@@ -343,6 +339,10 @@ export function createRunner(config: OrchestratorConfig): Runner {
         );
       }
       current = fromDisk;
+
+      // Post-phase pause check (signal may have fired during execution)
+      const pausedAfter = await markPausedIfNeeded(current, signal);
+      if (pausedAfter) return pausedAfter;
 
       // Check if we reached a terminal or yielding state
       if (
@@ -404,19 +404,13 @@ export function createRunner(config: OrchestratorConfig): Runner {
       for (const [, entry] of inFlight) {
         const { planId, ticketId, controller } = entry;
         const freshTicket = await stateManager.getTicket(planId, ticketId);
-        const freshPlan = await stateManager.getPlan(planId);
-        if (
-          freshTicket?.status === "paused" ||
-          freshPlan?.status === "paused"
-        ) {
+        if (!freshTicket) continue;
+        const paused = await markPausedIfNeeded(freshTicket);
+        if (paused) {
+          logger
+            .child({ ticketId })
+            .info("Aborting in-flight ticket (paused on disk)");
           controller.abort();
-          // Only mark paused if the ticket is still running to avoid
-          // overwriting a completed or failed status
-          if (freshTicket && freshTicket.status === "running") {
-            await stateManager.updateTicket(planId, ticketId, {
-              status: "paused",
-            });
-          }
         }
       }
 

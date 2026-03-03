@@ -80,6 +80,9 @@ export function execCommandStreaming(
     if (options.signal) {
       const onAbort = () => {
         aborted = true;
+        options.onStderr?.(
+          `Killing child process (pid=${child.pid}) via abort signal\n`,
+        );
         child.kill("SIGTERM");
       };
       options.signal.addEventListener("abort", onAbort, { once: true });
