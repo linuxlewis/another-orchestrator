@@ -32,7 +32,7 @@ export function execCommandStreaming(
   options: StreamingOptions = {},
 ): Promise<ShellResult> {
   if (options.signal?.aborted) {
-    return Promise.resolve({ stdout: "", stderr: "", exitCode: 1 });
+    return Promise.resolve({ stdout: "", stderr: "", exitCode: 130 });
   }
 
   return new Promise((resolve) => {
@@ -83,12 +83,16 @@ export function execCommandStreaming(
         child.kill("SIGTERM");
       };
       options.signal.addEventListener("abort", onAbort, { once: true });
+      // Re-check after adding listener to close the race window
+      if (options.signal.aborted) {
+        onAbort();
+      }
     }
 
     child.on("close", (code) => {
       if (timer) clearTimeout(timer);
       if (aborted) {
-        resolve({ stdout, stderr, exitCode: 1 });
+        resolve({ stdout, stderr, exitCode: 130 });
         return;
       }
       resolve({

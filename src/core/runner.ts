@@ -51,7 +51,12 @@ export function createRunner(config: OrchestratorConfig): Runner {
   const logger = createLogger(config.logDir);
   const phaseExecutor = createPhaseExecutor(config, templateRenderer, logger);
 
-  const inFlight = new Map<string, AbortController>();
+  interface InFlightEntry {
+    planId: string;
+    ticketId: string;
+    controller: AbortController;
+  }
+  const inFlight = new Map<string, InFlightEntry>();
 
   async function executeTicketPhase(
     ticket: TicketState,
@@ -377,7 +382,7 @@ export function createRunner(config: OrchestratorConfig): Runner {
 
       const key = `${planId}/${ticketId}`;
       const controller = new AbortController();
-      inFlight.set(key, controller);
+      inFlight.set(key, { planId, ticketId, controller });
 
       try {
         return await runTicketPhases(ticket, controller.signal);
@@ -396,8 +401,8 @@ export function createRunner(config: OrchestratorConfig): Runner {
       }
 
       // 2. Abort in-flight tickets whose on-disk status is now paused
-      for (const [key, controller] of inFlight) {
-        const [planId, ticketId] = key.split("/");
+      for (const [, entry] of inFlight) {
+        const { planId, ticketId, controller } = entry;
         const freshTicket = await stateManager.getTicket(planId, ticketId);
         const freshPlan = await stateManager.getPlan(planId);
         if (
@@ -405,8 +410,9 @@ export function createRunner(config: OrchestratorConfig): Runner {
           freshPlan?.status === "paused"
         ) {
           controller.abort();
-          // Ensure ticket is marked paused on disk immediately
-          if (freshTicket && freshTicket.status !== "paused") {
+          // Only mark paused if the ticket is still running to avoid
+          // overwriting a completed or failed status
+          if (freshTicket && freshTicket.status === "running") {
             await stateManager.updateTicket(planId, ticketId, {
               status: "paused",
             });
@@ -440,7 +446,11 @@ export function createRunner(config: OrchestratorConfig): Runner {
       for (const ticket of toDispatch) {
         const key = `${ticket.planId}/${ticket.ticketId}`;
         const controller = new AbortController();
-        inFlight.set(key, controller);
+        inFlight.set(key, {
+          planId: ticket.planId,
+          ticketId: ticket.ticketId,
+          controller,
+        });
 
         // Set status to running
         const running = await stateManager.updateTicket(

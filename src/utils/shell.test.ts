@@ -125,7 +125,7 @@ describe("shell", () => {
       setTimeout(() => controller.abort(), 100);
 
       const result = await promise;
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(130);
     });
 
     it("resolves immediately when AbortSignal is already aborted", async () => {
@@ -138,7 +138,7 @@ describe("shell", () => {
       });
       const elapsed = Date.now() - start;
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(130);
       expect(elapsed).toBeLessThan(2000);
     });
   });
