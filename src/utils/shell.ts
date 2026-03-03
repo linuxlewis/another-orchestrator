@@ -10,6 +10,7 @@ export interface ExecOptions {
   cwd?: string;
   env?: Record<string, string>;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface StreamingOptions extends ExecOptions {
@@ -30,6 +31,10 @@ export function execCommandStreaming(
   args: string[] = [],
   options: StreamingOptions = {},
 ): Promise<ShellResult> {
+  if (options.signal?.aborted) {
+    return Promise.resolve({ stdout: "", stderr: "", exitCode: 1 });
+  }
+
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>;
     try {
@@ -71,8 +76,21 @@ export function execCommandStreaming(
       }, options.timeoutMs);
     }
 
+    let aborted = false;
+    if (options.signal) {
+      const onAbort = () => {
+        aborted = true;
+        child.kill("SIGTERM");
+      };
+      options.signal.addEventListener("abort", onAbort, { once: true });
+    }
+
     child.on("close", (code) => {
       if (timer) clearTimeout(timer);
+      if (aborted) {
+        resolve({ stdout, stderr, exitCode: 1 });
+        return;
+      }
       resolve({
         stdout,
         stderr: killed ? `${stderr}Process timed out` : stderr,
