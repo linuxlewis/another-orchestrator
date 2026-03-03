@@ -649,6 +649,95 @@ phases:
     });
   });
 
+  describe("multi-repo plans", () => {
+    it("executes tickets with different repos in a null-repo plan", async () => {
+      await writeFile(
+        join(scriptDir, "run.sh"),
+        '#!/usr/bin/env bash\necho "success output"',
+        { mode: 0o755 },
+      );
+
+      const plan = makePlan({
+        repo: null,
+        tickets: [
+          { ticketId: "TICKET-1", order: 1, blockedBy: [] },
+          { ticketId: "TICKET-2", order: 2, blockedBy: [] },
+        ],
+      });
+      await savePlan(plan);
+      await saveTicket(
+        makeTicket({ ticketId: "TICKET-1", repo: "/repos/backend" }),
+      );
+      await saveTicket(
+        makeTicket({ ticketId: "TICKET-2", repo: "/repos/frontend" }),
+      );
+
+      const runner = createRunner(config);
+      const r1 = await runner.runSingleTicket("test-plan", "TICKET-1");
+      const r2 = await runner.runSingleTicket("test-plan", "TICKET-2");
+
+      expect(r1.status).toBe("complete");
+      expect(r2.status).toBe("complete");
+    });
+
+    it("unblocks cross-repo tickets via dependencies", async () => {
+      await writeFile(
+        join(scriptDir, "run.sh"),
+        '#!/usr/bin/env bash\necho "ok"',
+        { mode: 0o755 },
+      );
+
+      const plan = makePlan({
+        repo: null,
+        tickets: [
+          { ticketId: "TICKET-1", order: 1, blockedBy: [] },
+          { ticketId: "TICKET-2", order: 2, blockedBy: ["TICKET-1"] },
+        ],
+      });
+      await savePlan(plan);
+      await saveTicket(
+        makeTicket({
+          ticketId: "TICKET-1",
+          repo: "/repos/backend",
+          status: "complete",
+        }),
+      );
+      await saveTicket(
+        makeTicket({
+          ticketId: "TICKET-2",
+          repo: "/repos/frontend",
+          status: "queued",
+        }),
+      );
+
+      const runner = createRunner(config);
+      await runner.tick();
+
+      await new Promise((r) => setTimeout(r, 100));
+
+      const t2 = await readTicket("test-plan", "TICKET-2");
+      expect(["ready", "running", "complete"]).toContain(t2.status);
+    });
+
+    it("backward compat: plan with string repo still works", async () => {
+      await writeFile(
+        join(scriptDir, "run.sh"),
+        '#!/usr/bin/env bash\necho "ok"',
+        { mode: 0o755 },
+      );
+
+      const plan = makePlan({ repo: "/repos/my-project" });
+      const ticket = makeTicket({ repo: "/repos/my-project" });
+      await savePlan(plan);
+      await saveTicket(ticket);
+
+      const runner = createRunner(config);
+      const result = await runner.runSingleTicket("test-plan", "TICKET-1");
+
+      expect(result.status).toBe("complete");
+    });
+  });
+
   it("handles agent phase without promptTemplate gracefully", async () => {
     // Agent phase missing promptTemplate should fail and follow onFailure
     const agentWorkflowYaml = `

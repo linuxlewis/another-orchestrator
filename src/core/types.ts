@@ -74,7 +74,7 @@ export const PlanFileSchema = z.object({
   name: z.string(),
   createdAt: z.string(),
   createdBy: z.string(),
-  repo: z.string(),
+  repo: z.string().nullable().default(null),
   workflow: z.string(),
   agent: z.string().nullable().default(null),
   worktreeRoot: z.string(),
