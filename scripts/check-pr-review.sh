@@ -6,6 +6,20 @@ PR_NUMBER="$2"
 
 cd "$REPO_PATH"
 
+# Check if PR is already merged or closed — don't wait for reviews on a finished PR
+pr_state=$(gh pr view "$PR_NUMBER" --json state --jq '.state' 2>/dev/null) || {
+  echo "Error fetching PR state" >&2
+  exit 2
+}
+if [ "$pr_state" = "MERGED" ]; then
+  echo "merged"
+  exit 0
+fi
+if [ "$pr_state" = "CLOSED" ]; then
+  echo "closed"
+  exit 2
+fi
+
 # Resolve owner/repo for GraphQL queries
 REPO_NWO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || {
   echo "Error resolving repository" >&2
