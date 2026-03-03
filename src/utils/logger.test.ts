@@ -1,8 +1,8 @@
-import { readdir, readFile, rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createLogger, flushLogger } from "./logger.js";
+import { createLogger } from "./logger.js";
 
 describe("createLogger", () => {
   let logDir: string;
@@ -39,97 +39,63 @@ describe("createLogger", () => {
     expect(typeof child.child).toBe("function");
   });
 
-  it("writes structured JSON to per-ticket log file", async () => {
+  it("writes structured JSON to log file with ticketId in metadata", async () => {
     const logger = createLogger(logDir);
     const child = logger.child({ ticketId: "ticket-1" });
     child.info("test message");
-    await flushLogger(logger);
-    const content = await readFile(join(logDir, "ticket-1.log"), "utf-8");
+    await logger.flush();
+    const content = await readFile(join(logDir, "orchestrator.log"), "utf-8");
     const lines = content.trim().split("\n");
     expect(lines.length).toBeGreaterThanOrEqual(1);
     const parsed = JSON.parse(lines[0]);
     expect(parsed.ticketId).toBe("ticket-1");
     expect(parsed.msg).toBe("test message");
-    expect(parsed.level).toBe(30); // pino info level
+    expect(parsed.level).toBe(30);
   });
 
-  it("writes warn-level entries to per-ticket log file", async () => {
+  it("writes entries from different tickets to the same log file", async () => {
     const logger = createLogger(logDir);
-    const child = logger.child({ ticketId: "ticket-2" });
-    child.warn("warning message");
-    await flushLogger(logger);
-    const content = await readFile(join(logDir, "ticket-2.log"), "utf-8");
-    const parsed = JSON.parse(content.trim());
-    expect(parsed.level).toBe(40); // pino warn level
-    expect(parsed.msg).toBe("warning message");
-  });
-
-  it("writes error-level entries to per-ticket log file", async () => {
-    const logger = createLogger(logDir);
-    const child = logger.child({ ticketId: "ticket-3" });
-    child.error("error message");
-    await flushLogger(logger);
-    const content = await readFile(join(logDir, "ticket-3.log"), "utf-8");
-    const parsed = JSON.parse(content.trim());
-    expect(parsed.level).toBe(50); // pino error level
-    expect(parsed.msg).toBe("error message");
-  });
-
-  it("writes success-level entries to per-ticket log file", async () => {
-    const logger = createLogger(logDir);
-    const child = logger.child({ ticketId: "ticket-4" });
-    child.success("success message");
-    await flushLogger(logger);
-    const content = await readFile(join(logDir, "ticket-4.log"), "utf-8");
-    const parsed = JSON.parse(content.trim());
-    expect(parsed.level).toBe(35); // custom success level
-    expect(parsed.msg).toBe("success message");
-  });
-
-  it("writes trace-level entries to per-ticket log file", async () => {
-    const logger = createLogger(logDir);
-    const child = logger.child({ ticketId: "ticket-5" });
-    child.trace("agent output data");
-    await flushLogger(logger);
-    const content = await readFile(join(logDir, "ticket-5.log"), "utf-8");
-    const parsed = JSON.parse(content.trim());
-    expect(parsed.level).toBe(10); // pino trace level
-    expect(parsed.msg).toBe("agent output data");
-  });
-
-  it("does not create a log file when no ticketId binding", async () => {
-    const logger = createLogger(logDir);
-    logger.info("no ticket");
-    await flushLogger(logger);
-    await expect(
-      readFile(join(logDir, "undefined.log"), "utf-8"),
-    ).rejects.toThrow();
-  });
-
-  it("writes multiple entries to the same ticket log file", async () => {
-    const logger = createLogger(logDir);
-    const child = logger.child({ ticketId: "ticket-6" });
-    child.info("first");
-    child.warn("second");
-    child.error("third");
-    await flushLogger(logger);
-    const content = await readFile(join(logDir, "ticket-6.log"), "utf-8");
+    const child1 = logger.child({ ticketId: "ticket-A" });
+    const child2 = logger.child({ ticketId: "ticket-B" });
+    child1.info("from A");
+    child2.info("from B");
+    await logger.flush();
+    const content = await readFile(join(logDir, "orchestrator.log"), "utf-8");
     const lines = content.trim().split("\n");
-    expect(lines.length).toBe(3);
-    expect(JSON.parse(lines[0]).msg).toBe("first");
-    expect(JSON.parse(lines[1]).msg).toBe("second");
-    expect(JSON.parse(lines[2]).msg).toBe("third");
+    expect(lines.length).toBe(2);
+    expect(JSON.parse(lines[0]).ticketId).toBe("ticket-A");
+    expect(JSON.parse(lines[1]).ticketId).toBe("ticket-B");
   });
 
-  it("sanitizes ticketId to prevent path traversal", async () => {
+  it("writes logs without ticketId to the log file", async () => {
     const logger = createLogger(logDir);
-    const child = logger.child({ ticketId: "../evil" });
-    child.info("traversal attempt");
-    await flushLogger(logger);
-    const files = await readdir(logDir);
-    expect(files).not.toContain("../evil.log");
-    const sanitizedFile = files.find((f) => f.includes("evil"));
-    expect(sanitizedFile).toBe(".._evil.log");
+    logger.info("daemon message");
+    await logger.flush();
+    const content = await readFile(join(logDir, "orchestrator.log"), "utf-8");
+    const parsed = JSON.parse(content.trim());
+    expect(parsed.msg).toBe("daemon message");
+    expect(parsed.ticketId).toBeUndefined();
+  });
+
+  it("writes different log levels", async () => {
+    const logger = createLogger(logDir);
+    const child = logger.child({ ticketId: "ticket-1" });
+    child.trace("trace msg");
+    child.info("info msg");
+    child.warn("warn msg");
+    child.error("error msg");
+    child.success("success msg");
+    await logger.flush();
+    const content = await readFile(join(logDir, "orchestrator.log"), "utf-8");
+    const lines = content
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    expect(lines[0].level).toBe(10);
+    expect(lines[1].level).toBe(30);
+    expect(lines[2].level).toBe(40);
+    expect(lines[3].level).toBe(50);
+    expect(lines[4].level).toBe(35);
   });
 
   it("child logger supports further nesting", () => {
@@ -137,7 +103,6 @@ describe("createLogger", () => {
     const child = logger.child({ ticketId: "ticket-7" });
     const grandchild = child.child({ phase: "build" });
     expect(typeof grandchild.info).toBe("function");
-    // Should not throw
     grandchild.info("nested log");
   });
 });
