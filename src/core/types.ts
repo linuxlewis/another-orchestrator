@@ -115,7 +115,7 @@ export const TicketStateSchema = z.object({
   description: z.string(),
   acceptanceCriteria: z.array(z.string()).default([]),
   linearUrl: z.string().nullable().default(null),
-  repo: z.string(),
+  repo: z.string().nullable().default(null),
   workflow: z.string(),
   branch: z.string(),
   worktree: z.string(),

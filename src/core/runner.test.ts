@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createRunner } from "./runner.js";
+import { createRunner, resolveTicketRepo } from "./runner.js";
 import type { OrchestratorConfig, PlanFile, TicketState } from "./types.js";
 
 describe("runner", () => {
@@ -649,6 +649,34 @@ phases:
     });
   });
 
+  describe("resolveTicketRepo", () => {
+    it("returns ticket unchanged when ticket has a repo", () => {
+      const ticket = makeTicket({ repo: "/repos/backend" });
+      const result = resolveTicketRepo(ticket, { repo: "/repos/default" });
+      expect(result.repo).toBe("/repos/backend");
+    });
+
+    it("inherits repo from plan when ticket repo is null", () => {
+      const ticket = makeTicket({ repo: null });
+      const result = resolveTicketRepo(ticket, { repo: "/repos/default" });
+      expect(result.repo).toBe("/repos/default");
+    });
+
+    it("throws when both ticket and plan repo are null", () => {
+      const ticket = makeTicket({ repo: null });
+      expect(() => resolveTicketRepo(ticket, { repo: null })).toThrow(
+        "has no repo and plan",
+      );
+    });
+
+    it("throws when ticket repo is null and plan is null", () => {
+      const ticket = makeTicket({ repo: null });
+      expect(() => resolveTicketRepo(ticket, null)).toThrow(
+        "has no repo and plan",
+      );
+    });
+  });
+
   describe("multi-repo plans", () => {
     it("executes tickets with different repos in a null-repo plan", async () => {
       await writeFile(
@@ -728,6 +756,24 @@ phases:
 
       const plan = makePlan({ repo: "/repos/my-project" });
       const ticket = makeTicket({ repo: "/repos/my-project" });
+      await savePlan(plan);
+      await saveTicket(ticket);
+
+      const runner = createRunner(config);
+      const result = await runner.runSingleTicket("test-plan", "TICKET-1");
+
+      expect(result.status).toBe("complete");
+    });
+
+    it("ticket with null repo inherits from plan repo", async () => {
+      await writeFile(
+        join(scriptDir, "run.sh"),
+        '#!/usr/bin/env bash\necho "ok"',
+        { mode: 0o755 },
+      );
+
+      const plan = makePlan({ repo: "/repos/my-project" });
+      const ticket = makeTicket({ repo: null });
       await savePlan(plan);
       await saveTicket(ticket);
 
