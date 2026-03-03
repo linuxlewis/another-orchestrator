@@ -32,8 +32,8 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
 export function createRunner(config: OrchestratorConfig): Runner {
   const stateManager = createStateManager(config.stateDir);
-  const workflowLoader = createWorkflowLoader(config.workflowDir);
-  const templateRenderer = createTemplateRenderer(config.promptDir);
+  const workflowLoader = createWorkflowLoader(config.workflowSearchPath);
+  const templateRenderer = createTemplateRenderer(config.promptSearchPath);
   const logger = createLogger(config.logDir);
   const phaseExecutor = createPhaseExecutor(config, templateRenderer, logger);
 

@@ -114,7 +114,6 @@ src/
     logger.ts                 # Per-ticket file + console logging
 
 workflows/
-  registry.yaml               # Workflow index for planner discovery
   standard.yaml               # Default feature workflow
   bugfix.yaml                 # Bug fix workflow
   minimal.yaml                # Single-phase testing workflow

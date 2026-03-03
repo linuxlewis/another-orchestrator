@@ -83,6 +83,7 @@ describe("OrchestratorConfigSchema", () => {
     stateDir: ".state",
     logDir: ".logs",
     workflowDir: "workflows",
+    workflowSearchPath: ["workflows"],
     promptDir: "prompts",
     promptSearchPath: ["prompts"],
     scriptDir: "scripts",

@@ -10,7 +10,7 @@ This skill teaches you how to create and register custom YAML workflows for the 
 
 Workflows are YAML files that define a directed graph of phases. The runner walks this graph deterministically — it never makes judgment calls. Every transition is explicit in the YAML.
 
-Workflow files live in `workflows/` and are registered in `workflows/registry.yaml`.
+Workflow files live in `workflows/`. The runner discovers them automatically by scanning `*.yaml` files in the workflow directories.
 
 ## Phase Types
 
@@ -226,33 +226,14 @@ phases:
     notify: true
 ```
 
-## Registry
-
-Register your workflow in `workflows/registry.yaml`:
-
-```yaml
-- name: my-workflow
-  file: my-workflow.yaml
-  description: >
-    A custom workflow for specific use case. Describe what it does
-    so the planner can choose it appropriately.
-  tags: [custom, feature]
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Must match the `name` field in the workflow YAML. |
-| `file` | string | Filename relative to `workflows/`. |
-| `description` | string | Detailed description for the planner to read when selecting workflows. |
-| `tags` | string[] | Categorization tags. Common: `feature`, `bug`, `hotfix`, `default`, `review-only`. |
-
 ## How to Add a New Workflow
 
-1. Create `workflows/<name>.yaml` with the workflow definition.
-2. Add an entry to `workflows/registry.yaml`.
-3. Create any new prompt templates referenced by agent phases in `prompts/`.
-4. Create any new scripts referenced by script or poll phases in `scripts/`.
-5. Test by creating a plan that uses the new workflow and running `orchestrator run <planId> <ticketId>`.
+1. Create `workflows/<name>.yaml` with the workflow definition (include `name`, `description`, `tags`, and `phases`).
+2. Create any new prompt templates referenced by agent phases in `prompts/`.
+3. Create any new scripts referenced by script or poll phases in `scripts/`.
+4. Test by creating a plan that uses the new workflow and running `orchestrator run <planId> <ticketId>`.
+
+The workflow is automatically discovered — no separate registration step is needed. The `name` field in the YAML is used as the workflow identifier.
 
 ## Common Patterns
 
@@ -358,13 +339,4 @@ phases:
     notify: true
 ```
 
-Register it:
-
-```yaml
-- name: review-only
-  file: review-only.yaml
-  description: >
-    Reviews code on an existing branch without making changes.
-    Read-only agent phase that produces a review verdict.
-  tags: [review, read-only]
-```
+Save this as `workflows/review-only.yaml` — it will be automatically discovered by the runner.

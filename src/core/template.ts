@@ -19,9 +19,11 @@ function buildContext(ticket: TicketState): Record<string, unknown> {
   };
 }
 
-export function createTemplateRenderer(promptDir: string): TemplateRenderer {
+export function createTemplateRenderer(
+  promptDirs: string | string[],
+): TemplateRenderer {
   const env = new nunjucks.Environment(
-    new nunjucks.FileSystemLoader(promptDir),
+    new nunjucks.FileSystemLoader(promptDirs),
     {
       autoescape: false,
       throwOnUndefined: false,

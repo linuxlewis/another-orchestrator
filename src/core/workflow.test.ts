@@ -7,23 +7,10 @@ import { createWorkflowLoader } from "./workflow.js";
 describe("workflow", () => {
   let tmpDir: string;
 
-  const registryYaml = `
-workflows:
-  - name: minimal
-    file: minimal.yaml
-    description: "Minimal workflow"
-    tags:
-      - test
-  - name: full
-    file: full.yaml
-    description: "Full workflow"
-    tags:
-      - production
-`;
-
   const minimalYaml = `
 name: minimal
 description: "Minimal test workflow"
+tags: [test, minimal]
 phases:
   - id: run_script
     type: script
@@ -42,10 +29,23 @@ phases:
     notify: true
 `;
 
+  const fullYaml = `
+name: full
+description: "Full workflow"
+tags: [production]
+phases:
+  - id: start
+    type: script
+    command: start.sh
+    onSuccess: done
+  - id: done
+    type: terminal
+`;
+
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "workflow-test-"));
-    await writeFile(join(tmpDir, "registry.yaml"), registryYaml);
     await writeFile(join(tmpDir, "minimal.yaml"), minimalYaml);
+    await writeFile(join(tmpDir, "full.yaml"), fullYaml);
   });
 
   afterEach(async () => {
@@ -53,18 +53,106 @@ phases:
   });
 
   describe("loadRegistry", () => {
-    it("loads and parses registry.yaml", async () => {
-      const loader = createWorkflowLoader(tmpDir);
+    it("discovers workflows by scanning yaml files", async () => {
+      const loader = createWorkflowLoader([tmpDir]);
       const entries = await loader.loadRegistry();
       expect(entries).toHaveLength(2);
-      expect(entries[0].name).toBe("minimal");
-      expect(entries[1].name).toBe("full");
+      const names = entries.map((e) => e.name).sort();
+      expect(names).toEqual(["full", "minimal"]);
+    });
+
+    it("includes description and tags from workflow files", async () => {
+      const loader = createWorkflowLoader([tmpDir]);
+      const entries = await loader.loadRegistry();
+      const minimal = entries.find((e) => e.name === "minimal");
+      expect(minimal?.description).toBe("Minimal test workflow");
+      expect(minimal?.tags).toEqual(["test", "minimal"]);
+    });
+
+    it("skips files without name or phases fields", async () => {
+      await writeFile(join(tmpDir, "not-a-workflow.yaml"), "key: value\n");
+      const loader = createWorkflowLoader([tmpDir]);
+      const entries = await loader.loadRegistry();
+      expect(entries).toHaveLength(2);
+    });
+
+    it("skips non-yaml files", async () => {
+      await writeFile(join(tmpDir, "readme.md"), "# Hello");
+      const loader = createWorkflowLoader([tmpDir]);
+      const entries = await loader.loadRegistry();
+      expect(entries).toHaveLength(2);
+    });
+  });
+
+  describe("multi-directory search", () => {
+    let userDir: string;
+
+    beforeEach(async () => {
+      userDir = await mkdtemp(join(tmpdir(), "workflow-user-"));
+    });
+
+    afterEach(async () => {
+      await rm(userDir, { recursive: true, force: true });
+    });
+
+    it("user dir overrides bundled workflow with same name", async () => {
+      const userMinimal = `
+name: minimal
+description: "User-customized minimal"
+tags: [custom]
+phases:
+  - id: custom_step
+    type: script
+    command: custom.sh
+    onSuccess: done
+  - id: done
+    type: terminal
+`;
+      await writeFile(join(userDir, "minimal.yaml"), userMinimal);
+      // userDir first = higher priority
+      const loader = createWorkflowLoader([userDir, tmpDir]);
+      const workflow = await loader.loadWorkflow("minimal");
+      expect(workflow.description).toBe("User-customized minimal");
+      expect(workflow.phases[0].id).toBe("custom_step");
+    });
+
+    it("bundled workflows are available when user dir has no override", async () => {
+      const loader = createWorkflowLoader([userDir, tmpDir]);
+      const workflow = await loader.loadWorkflow("full");
+      expect(workflow.description).toBe("Full workflow");
+    });
+
+    it("user dir can add new workflows", async () => {
+      const customYaml = `
+name: deploy
+description: "Custom deploy workflow"
+tags: [deploy]
+phases:
+  - id: deploy_step
+    type: script
+    command: deploy.sh
+    onSuccess: done
+  - id: done
+    type: terminal
+`;
+      await writeFile(join(userDir, "deploy.yaml"), customYaml);
+      const loader = createWorkflowLoader([userDir, tmpDir]);
+      const entries = await loader.loadRegistry();
+      expect(entries).toHaveLength(3);
+      const workflow = await loader.loadWorkflow("deploy");
+      expect(workflow.description).toBe("Custom deploy workflow");
+    });
+
+    it("handles non-existent user dir gracefully", async () => {
+      const loader = createWorkflowLoader(["/nonexistent/dir", tmpDir]);
+      const entries = await loader.loadRegistry();
+      expect(entries).toHaveLength(2);
     });
   });
 
   describe("loadWorkflow", () => {
     it("loads and parses a workflow YAML", async () => {
-      const loader = createWorkflowLoader(tmpDir);
+      const loader = createWorkflowLoader([tmpDir]);
       const workflow = await loader.loadWorkflow("minimal");
       expect(workflow.name).toBe("minimal");
       expect(workflow.phases).toHaveLength(3);
@@ -73,23 +161,23 @@ phases:
     });
 
     it("caches loaded workflows", async () => {
-      const loader = createWorkflowLoader(tmpDir);
+      const loader = createWorkflowLoader([tmpDir]);
       const wf1 = await loader.loadWorkflow("minimal");
       const wf2 = await loader.loadWorkflow("minimal");
       expect(wf1).toBe(wf2); // same reference = cached
     });
 
     it("throws for missing workflow", async () => {
-      const loader = createWorkflowLoader(tmpDir);
+      const loader = createWorkflowLoader([tmpDir]);
       await expect(loader.loadWorkflow("nonexistent")).rejects.toThrow(
-        'Workflow "nonexistent" not found in registry',
+        'Workflow "nonexistent" not found',
       );
     });
   });
 
   describe("getPhase", () => {
     it("returns a specific phase definition", async () => {
-      const loader = createWorkflowLoader(tmpDir);
+      const loader = createWorkflowLoader([tmpDir]);
       const phase = await loader.getPhase("minimal", "run_script");
       expect(phase.id).toBe("run_script");
       expect(phase.type).toBe("script");
@@ -97,7 +185,7 @@ phases:
     });
 
     it("throws for missing phase", async () => {
-      const loader = createWorkflowLoader(tmpDir);
+      const loader = createWorkflowLoader([tmpDir]);
       await expect(loader.getPhase("minimal", "missing")).rejects.toThrow(
         'Phase "missing" not found in workflow "minimal"',
       );
@@ -106,7 +194,7 @@ phases:
 
   describe("getNextPhase", () => {
     it("returns onSuccess target", async () => {
-      const loader = createWorkflowLoader(tmpDir);
+      const loader = createWorkflowLoader([tmpDir]);
       const next = await loader.getNextPhase(
         "minimal",
         "run_script",
@@ -116,7 +204,7 @@ phases:
     });
 
     it("returns onFailure target", async () => {
-      const loader = createWorkflowLoader(tmpDir);
+      const loader = createWorkflowLoader([tmpDir]);
       const next = await loader.getNextPhase(
         "minimal",
         "run_script",
@@ -126,7 +214,7 @@ phases:
     });
 
     it("returns null when no transition defined", async () => {
-      const loader = createWorkflowLoader(tmpDir);
+      const loader = createWorkflowLoader([tmpDir]);
       const next = await loader.getNextPhase("minimal", "complete", "success");
       expect(next).toBeNull();
     });
@@ -134,7 +222,7 @@ phases:
 
   describe("clearCache", () => {
     it("clears cached workflows so they reload from disk", async () => {
-      const loader = createWorkflowLoader(tmpDir);
+      const loader = createWorkflowLoader([tmpDir]);
       await loader.loadWorkflow("minimal");
 
       // Modify the file on disk
@@ -158,18 +246,11 @@ phases:
   describe("invalid YAML", () => {
     it("throws on invalid workflow YAML", async () => {
       await writeFile(
-        join(tmpDir, "registry.yaml"),
-        `
-workflows:
-  - name: bad
-    file: bad.yaml
-    description: "Bad workflow"
-    tags: []
-`,
+        join(tmpDir, "bad.yaml"),
+        "name: bad\nphases: not-array\n",
       );
-      await writeFile(join(tmpDir, "bad.yaml"), "name: 123\nphases: not-array");
-      const loader = createWorkflowLoader(tmpDir);
-      await expect(loader.loadWorkflow("bad")).rejects.toThrow();
+      const loader = createWorkflowLoader([tmpDir]);
+      await expect(loader.loadRegistry()).rejects.toThrow();
     });
   });
 });

@@ -1,5 +1,6 @@
 name: bugfix
 description: "Bugfix workflow: setup, implement fix, verify, create PR, review cycle, merge, cleanup"
+tags: [bugfix, agent]
 
 phases:
   - id: setup

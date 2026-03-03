@@ -1,5 +1,6 @@
 name: standard
 description: "Standard workflow: setup, implement, review, simplify, verify, create PR, review cycle, merge, cleanup"
+tags: [standard, agent]
 
 phases:
   - id: setup

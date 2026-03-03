@@ -143,10 +143,20 @@ describe("loadConfig", () => {
     await writeFile(configPath, fullYaml);
 
     const config = await loadConfig({ configPath, packageDir: pkgDir });
-    // Custom dir is ./prompts resolved to tmpDir/prompts, bundled is pkgDir/prompts
     expect(config.promptSearchPath).toEqual([
       join(tmpDir, "prompts"),
       join(pkgDir, "prompts"),
+    ]);
+  });
+
+  it("builds workflowSearchPath with custom dir first and bundled fallback", async () => {
+    const configPath = join(tmpDir, "orchestrator.yaml");
+    await writeFile(configPath, fullYaml);
+
+    const config = await loadConfig({ configPath, packageDir: pkgDir });
+    expect(config.workflowSearchPath).toEqual([
+      join(tmpDir, "workflows"),
+      join(pkgDir, "workflows"),
     ]);
   });
 
@@ -163,18 +173,24 @@ describe("loadConfig", () => {
     expect(config.stateDir).toBe(join(tmpDir, "home", "state"));
     expect(config.logDir).toBe(join(tmpDir, "home", "logs"));
 
-    // Bundled dirs default to packageDir
-    expect(config.workflowDir).toBe(join(pkgDir, "workflows"));
+    // Bundled dirs default to packageDir (except convention-based ones)
     expect(config.scriptDir).toBe(join(pkgDir, "scripts"));
     expect(config.skillsDir).toBe(join(pkgDir, "skills"));
 
     // promptDir defaults to ~/.orchestrator/prompts/ (convention-based)
     expect(config.promptDir).toBe(join(tmpDir, "home", "prompts"));
 
-    // Search path: home prompts first, bundled fallback
+    // workflowDir defaults to ~/.orchestrator/workflows/ (convention-based)
+    expect(config.workflowDir).toBe(join(tmpDir, "home", "workflows"));
+
+    // Search paths: home dir first, bundled fallback
     expect(config.promptSearchPath).toEqual([
       join(tmpDir, "home", "prompts"),
       join(pkgDir, "prompts"),
+    ]);
+    expect(config.workflowSearchPath).toEqual([
+      join(tmpDir, "home", "workflows"),
+      join(pkgDir, "workflows"),
     ]);
   });
 
@@ -216,6 +232,7 @@ describe("resolveAgent", () => {
     stateDir: "/tmp/state",
     logDir: "/tmp/logs",
     workflowDir: "/tmp/workflows",
+    workflowSearchPath: ["/tmp/workflows"],
     promptDir: "/tmp/prompts",
     promptSearchPath: ["/tmp/prompts"],
     scriptDir: "/tmp/scripts",

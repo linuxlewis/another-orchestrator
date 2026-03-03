@@ -1,18 +1,12 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import YAML from "yaml";
-import { z } from "zod";
 import {
   type PhaseDefinition,
   type WorkflowDefinition,
   WorkflowDefinitionSchema,
   type WorkflowRegistryEntry,
-  WorkflowRegistryEntrySchema,
 } from "./types.js";
-
-const WorkflowRegistrySchema = z.object({
-  workflows: z.array(WorkflowRegistryEntrySchema),
-});
 
 export interface WorkflowLoader {
   loadRegistry(): Promise<WorkflowRegistryEntry[]>;
@@ -26,37 +20,67 @@ export interface WorkflowLoader {
   clearCache(): void;
 }
 
-export function createWorkflowLoader(workflowDir: string): WorkflowLoader {
+export function createWorkflowLoader(workflowDirs: string[]): WorkflowLoader {
   const cache = new Map<string, WorkflowDefinition>();
+  let scanned = false;
 
-  async function loadRegistryFile(): Promise<WorkflowRegistryEntry[]> {
-    const raw = await readFile(join(workflowDir, "registry.yaml"), "utf-8");
-    const parsed = YAML.parse(raw);
-    const registry = WorkflowRegistrySchema.parse(parsed);
-    return registry.workflows;
+  async function scanWorkflows(): Promise<void> {
+    if (scanned) return;
+
+    // Process dirs in order: first dir has highest priority.
+    // Later dirs only add workflows not already discovered.
+    for (const dir of workflowDirs) {
+      let files: string[];
+      try {
+        files = await readdir(dir);
+      } catch {
+        continue; // dir may not exist
+      }
+
+      for (const file of files) {
+        if (!file.endsWith(".yaml") && !file.endsWith(".yml")) continue;
+
+        let raw: string;
+        try {
+          raw = await readFile(join(dir, file), "utf-8");
+        } catch {
+          continue;
+        }
+
+        const parsed = YAML.parse(raw);
+
+        // Skip files that don't look like workflow definitions
+        if (!parsed?.name || !parsed?.phases) continue;
+
+        const workflow = WorkflowDefinitionSchema.parse(parsed);
+        if (!cache.has(workflow.name)) {
+          cache.set(workflow.name, workflow);
+        }
+      }
+    }
+
+    scanned = true;
   }
 
   return {
     async loadRegistry() {
-      return loadRegistryFile();
+      await scanWorkflows();
+      return [...cache.values()].map((w) => ({
+        name: w.name,
+        description: w.description,
+        tags: w.tags,
+      }));
     },
 
     async loadWorkflow(name) {
-      const cached = cache.get(name);
-      if (cached) return cached;
-
-      const entries = await loadRegistryFile();
-      const entry = entries.find((e) => e.name === name);
-      if (!entry) {
+      await scanWorkflows();
+      const workflow = cache.get(name);
+      if (!workflow) {
+        const available = [...cache.keys()].join(", ");
         throw new Error(
-          `Workflow "${name}" not found in registry. Available: ${entries.map((e) => e.name).join(", ")}`,
+          `Workflow "${name}" not found. Available: ${available}`,
         );
       }
-
-      const raw = await readFile(join(workflowDir, entry.file), "utf-8");
-      const parsed = YAML.parse(raw);
-      const workflow = WorkflowDefinitionSchema.parse(parsed);
-      cache.set(name, workflow);
       return workflow;
     },
 
@@ -81,6 +105,7 @@ export function createWorkflowLoader(workflowDir: string): WorkflowLoader {
 
     clearCache() {
       cache.clear();
+      scanned = false;
     },
   };
 }

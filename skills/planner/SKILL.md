@@ -63,7 +63,7 @@ Each plan is a directory under `state/plans/`. The plan metadata lives in `plan.
 | `createdAt` | string | yes | ISO 8601 timestamp. |
 | `createdBy` | string | yes | Who created this plan (e.g. `"planner"`). |
 | `repo` | string | yes | Absolute path to the target project repo. |
-| `workflow` | string | yes | Workflow name from `workflows/registry.yaml`. |
+| `workflow` | string | yes | Workflow name (matches the `name` field in a workflow YAML file). |
 | `agent` | string \| null | no | Override default agent for all tickets in this plan. `null` uses the global default from `orchestrator.yaml`. |
 | `worktreeRoot` | string | yes | Absolute path where git worktrees will be created. |
 | `status` | `"active"` \| `"paused"` \| `"complete"` | yes | `active` plans are processed by the runner. `paused` plans are skipped. |
@@ -143,7 +143,7 @@ Dependencies are defined in the plan's `tickets[].blockedBy` array:
 
 ## Workflow Selection
 
-Available workflows are listed in `workflows/registry.yaml`. Read that file to see what's available.
+Available workflows are discovered automatically from `*.yaml` files in the workflow directories. List the files in `$ORCHESTRATOR_WORKFLOW_DIR` to see what's available.
 
 Common choices:
 - `standard` — Full feature workflow: setup, implement, self-review, simplify, verify, create PR, review cycle, merge, cleanup.
@@ -332,6 +332,6 @@ A plan targeting a different repo with different workflows per ticket.
 3. `blockedBy` references only ticket IDs that exist in the same plan.
 4. `repo` paths are absolute and point to actual repos.
 5. `worktreeRoot` is a writable directory.
-6. `workflow` names exist in `workflows/registry.yaml`.
+6. `workflow` names match actual workflow YAML files in the workflow directory.
 7. All new tickets have `status: "queued"`, `currentPhase` set to the workflow's first phase, and empty `phaseHistory`, `context`, `retries`.
 8. `branch` names are unique across tickets (no two tickets sharing a branch).

@@ -131,13 +131,7 @@ capture:
 2. Define the phase graph with `name`, `description`, and `phases` array.
 3. Each phase needs at minimum: `id`, `type`, and transitions (`onSuccess`/`onFailure`).
 4. End all paths with `terminal` phases.
-5. Register the workflow in `registry.yaml`:
-   ```yaml
-   - name: my-workflow
-     file: my-workflow.yaml
-     description: "Description of your workflow"
-     tags:
-       - custom
-   ```
-6. Create any new scripts in `scripts/` and prompt templates in `prompts/` as needed.
+5. Create any new scripts in `scripts/` and prompt templates in `prompts/` as needed.
+
+The workflow is automatically discovered from the YAML file — no separate registration is needed. Include `name`, `description`, and `tags` fields in the workflow YAML for discoverability.
 7. Assign the workflow to tickets by setting `workflow: my-workflow` in the ticket state.

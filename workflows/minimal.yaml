@@ -1,5 +1,6 @@
 name: minimal
 description: "Minimal workflow: run a script, then complete or abort"
+tags: [test, minimal]
 
 phases:
   - id: run_script

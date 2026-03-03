@@ -163,7 +163,7 @@ Choose based on GitHub Issue labels:
 | Label: `bug`, `hotfix` | `bugfix` |
 | Label: `feature`, `enhancement`, or no label | `standard` |
 
-Check `workflows/registry.yaml` for available workflows and their descriptions.
+List the workflow YAML files in the workflow directory to see available workflows and their descriptions.
 
 ## Example: Milestone to Plan
 

@@ -38,7 +38,7 @@ You have a `question` tool for asking the user to choose between options. **Use 
 Before writing any plan or ticket JSON, use `question` to confirm these with the user:
 
 1. **Which repo?** — Explore the workspace and use context from the user's request (ticket descriptions, project names, tech stack clues) to rank which repos are most likely relevant. Present your **best guesses first, max 4 options** — the user can always type a custom path. Don't list every directory in the workspace.
-2. **Which workflow?** — Read `$ORCHESTRATOR_WORKFLOW_DIR/registry.yaml` first, then present the available workflows as options with their descriptions. Put the most likely match first based on the type of work (feature vs bug fix). For example:
+2. **Which workflow?** — List the YAML files in `$ORCHESTRATOR_WORKFLOW_DIR` to discover available workflows and their descriptions. Put the most likely match first based on the type of work (feature vs bug fix). For example:
    - `standard` — Full feature workflow (setup, implement, review, PR, merge)
    - `bugfix` — Abbreviated bug fix workflow
 3. **Which agent?** — If the user hasn't specified, present the available agents from the config. If there's an obvious default, suggest it but still confirm.
@@ -58,7 +58,7 @@ The user's workspace may contain dozens of directories. **Do not list them all.*
 ```
 User: "Create a plan for these Linear tickets: PROJ-101, PROJ-102"
 
-You: [Read config, registry.yaml, explore workspace repos]
+You: [Read config, explore available workflows, explore workspace repos]
 You: [Read ticket details to understand the project context]
 You: [Use question tool] "Which repo should these tickets target?"
      Options: mindbloom-backend (best match based on ticket context),
@@ -97,7 +97,7 @@ You: [Write the plan and ticket files]
 - **Always use absolute paths** in plan and ticket files (repo, worktree, worktreeRoot).
 - **Read the skills** in `$ORCHESTRATOR_SKILLS_DIR` for detailed schemas and examples before creating plans, tickets, or modifying workflows.
 - **Read the config** at `$ORCHESTRATOR_CONFIG_PATH` to understand available agents, workflows, and settings before making suggestions.
-- **Read `$ORCHESTRATOR_WORKFLOW_DIR/registry.yaml`** to see available workflows before assigning them to tickets.
+- **List workflows** in `$ORCHESTRATOR_WORKFLOW_DIR` (read the YAML files) to see available workflows before assigning them to tickets.
 - **New tickets always start with** `status: "queued"` and empty `phaseHistory`, `context`, `retries`.
 - **When modifying config**, preserve existing content and only change what the user asked for. The config is YAML.
 - **You are in the user's workspace** (`$ORCHESTRATOR_REPO`). Repos are subdirectories here — explore with `ls` to discover them.

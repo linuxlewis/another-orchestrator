@@ -130,7 +130,7 @@ Choose based on Linear issue labels and type:
 | Label: `feature`, or no label | `standard` |
 | Priority: Urgent + Label: `bug` | `bugfix` |
 
-Check `workflows/registry.yaml` for available workflows and their descriptions.
+List the workflow YAML files in the workflow directory to see available workflows and their descriptions.
 
 ## Example: Sprint to Plan
 
