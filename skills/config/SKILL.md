@@ -64,7 +64,8 @@ agents:
 
 # Optional: directory overrides (relative to config file location)
 # If omitted, smart defaults apply:
-#   stateDir, logDir → ~/.orchestrator/<name>
+#   stateDir → ~/.orchestrator/state
+#   logDir → <stateDir>/logs
 #   workflowDir, promptDir, scriptDir, skillsDir → bundled with package
 stateDir: ./state
 logDir: ./logs
@@ -108,7 +109,7 @@ Where plan and ticket JSON files are stored. Default: `~/.orchestrator/state`.
 
 ### `logDir` (string, optional)
 
-Where per-ticket execution logs are written. Default: `~/.orchestrator/logs`.
+Where per-ticket execution logs are written. Default: `<stateDir>/logs` (i.e., `~/.orchestrator/state/logs`).
 
 ### `workflowDir` (string, optional)
 

@@ -93,11 +93,13 @@ export async function loadConfig(
       ? [promptDir, bundledPromptDir]
       : [bundledPromptDir];
 
+  const stateDir = resolveDir(rawConfig.stateDir, join(home, "state"));
+
   const resolved: OrchestratorConfig = {
     ...rawConfig,
     // User data dirs default to ~/.orchestrator/<name>
-    stateDir: resolveDir(rawConfig.stateDir, join(home, "state")),
-    logDir: resolveDir(rawConfig.logDir, join(home, "logs")),
+    stateDir,
+    logDir: resolveDir(rawConfig.logDir, join(stateDir, "logs")),
     // Bundled dirs default to <packageDir>/<name>
     workflowDir,
     workflowSearchPath,

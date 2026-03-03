@@ -171,7 +171,8 @@ describe("loadConfig", () => {
 
     // User data dirs default to home
     expect(config.stateDir).toBe(join(tmpDir, "home", "state"));
-    expect(config.logDir).toBe(join(tmpDir, "home", "logs"));
+    // logDir defaults to <stateDir>/logs
+    expect(config.logDir).toBe(join(tmpDir, "home", "state", "logs"));
 
     // Bundled dirs default to packageDir (except convention-based ones)
     expect(config.scriptDir).toBe(join(pkgDir, "scripts"));
@@ -192,6 +193,45 @@ describe("loadConfig", () => {
       join(tmpDir, "home", "workflows"),
       join(pkgDir, "workflows"),
     ]);
+  });
+
+  it("defaults logDir to <stateDir>/logs when not specified", async () => {
+    const configPath = join(tmpDir, "orchestrator.yaml");
+    await writeFile(
+      configPath,
+      `
+defaultAgent: claude
+agents:
+  claude:
+    command: claude
+    defaultArgs: []
+stateDir: ./my-state
+`,
+    );
+
+    const config = await loadConfig({ configPath, packageDir: pkgDir });
+    expect(config.stateDir).toBe(join(tmpDir, "my-state"));
+    expect(config.logDir).toBe(join(tmpDir, "my-state", "logs"));
+  });
+
+  it("respects explicit logDir override", async () => {
+    const configPath = join(tmpDir, "orchestrator.yaml");
+    await writeFile(
+      configPath,
+      `
+defaultAgent: claude
+agents:
+  claude:
+    command: claude
+    defaultArgs: []
+stateDir: ./my-state
+logDir: ./custom-logs
+`,
+    );
+
+    const config = await loadConfig({ configPath, packageDir: pkgDir });
+    expect(config.stateDir).toBe(join(tmpDir, "my-state"));
+    expect(config.logDir).toBe(join(tmpDir, "custom-logs"));
   });
 
   it("throws on invalid YAML", async () => {

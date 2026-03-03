@@ -18,11 +18,7 @@ export function register(
       const targetDir = opts.dir
         ? resolve(opts.dir)
         : resolveOrchestratorHome();
-      const dirs = ["state", "logs"];
-
-      for (const dir of dirs) {
-        await mkdir(join(targetDir, dir), { recursive: true });
-      }
+      await mkdir(join(targetDir, "state", "logs"), { recursive: true });
 
       const configPath = join(targetDir, "config.yaml");
       const configContent = `defaultAgent: claude
@@ -49,9 +45,9 @@ ghCommand: gh
         // File already exists, don't overwrite
       });
 
-      const logger = createLogger(join(targetDir, "logs"));
+      const logger = createLogger(join(targetDir, "state", "logs"));
       logger.success(`Initialized in ${targetDir}`);
-      console.log(chalk.dim(`  Created directories: ${dirs.join(", ")}`));
+      console.log(chalk.dim("  Created directories: state, state/logs"));
       console.log(chalk.dim(`  Config: ${configPath}`));
     });
 }

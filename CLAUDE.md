@@ -149,7 +149,7 @@ docs/                         # Reference documentation
 ~/.orchestrator/              # User data (external, created by `orchestrator init`)
   config.yaml                 # User configuration
   state/                      # Plan and ticket JSON files
-  logs/                       # Per-ticket execution logs
+    logs/                     # Per-ticket execution logs
 ```
 
 ## Key Source Files

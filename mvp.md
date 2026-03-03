@@ -465,7 +465,7 @@ agent-orchestrator/
 │           └── SKILL.md
 │
 ├── state/                       # Runtime (gitignored)
-├── logs/                        # Per-ticket logs (gitignored)
+│   └── logs/                    # Per-ticket logs
 ├── schemas/                     # JSON schemas for validation
 │
 ├── CLAUDE.md                    # Project docs with progressive disclosure
@@ -563,7 +563,7 @@ All intervention is through file edits or CLI commands. No special tooling requi
 Three levels of visibility:
 
 1. **State files** — `cat state/<plan>/<ticket>.json | jq .currentPhase` for quick checks. The `phaseHistory` array shows the full execution trace.
-2. **Logs** — `tail -f logs/<ticketId>.log` for detailed agent output per ticket. Each phase logs its start, duration, exit code, and output summary.
+2. **Logs** — `tail -f state/logs/<ticketId>.log` for detailed agent output per ticket. Each phase logs its start, duration, exit code, and output summary.
 3. **Planner** — Ask the LLM planner "what's the status of everything?" and it reads the state files and summarizes. Can also identify stuck tickets, suggest retries, or flag issues.
 
 A future enhancement could add a TUI dashboard that watches the state directory and renders a live table.

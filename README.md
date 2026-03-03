@@ -199,8 +199,7 @@ Config is created by `orchestrator init` at `~/.orchestrator/config.yaml`. The r
 
 **User data** (lives in `~/.orchestrator/`):
 - `config.yaml` -- agents, MCP servers, concurrency settings
-- `state/` -- plan and ticket JSON files
-- `logs/` -- execution logs
+- `state/` -- plan and ticket JSON files, plus `state/logs/` for execution logs
 
 Example config (directory fields are optional -- smart defaults apply):
 
