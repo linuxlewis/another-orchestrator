@@ -62,6 +62,15 @@ phases:
     intervalSeconds: 60
     timeoutSeconds: 86400
     onSuccess: await_merge
+    onFailure: route_review_failure
+
+  - id: route_review_failure
+    type: script
+    command: check-pr-closed.sh
+    args:
+      - "{{ repo }}"
+      - "{{ context.pr_number }}"
+    onSuccess: pr_closed
     onFailure: handle_review
 
   - id: handle_review
@@ -80,6 +89,15 @@ phases:
     intervalSeconds: 60
     timeoutSeconds: 86400
     onSuccess: cleanup
+    onFailure: route_merge_failure
+
+  - id: route_merge_failure
+    type: script
+    command: check-pr-closed.sh
+    args:
+      - "{{ repo }}"
+      - "{{ context.pr_number }}"
+    onSuccess: pr_closed
     onFailure: escalate
 
   - id: cleanup
@@ -92,6 +110,10 @@ phases:
 
   - id: complete
     type: terminal
+
+  - id: pr_closed
+    type: terminal
+    notify: true
 
   - id: escalate
     type: terminal
