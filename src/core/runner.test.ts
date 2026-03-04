@@ -891,6 +891,7 @@ phases:
     command: check-pr-closed.sh
     args:
       - "{{ repo }}"
+      - "{{ context.pr_number }}"
     onSuccess: pr_closed
     onFailure: handle_review
   - id: handle_review
