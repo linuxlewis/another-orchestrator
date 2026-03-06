@@ -62,14 +62,14 @@ unresolved_comments=$(gh api graphql \
 ci_failed=$(gh pr checks "$PR_NUMBER" --json bucket \
   --jq '[.[] | select(.bucket == "fail")] | length' 2>/dev/null) || ci_failed="0"
 
-# APPROVED takes priority — unresolved comments don't block an approval
-if [ "$review_decision" = "APPROVED" ]; then
-  echo "approved"
-  exit 0
-fi
-
 # CHANGES_REQUESTED is actionable — exit 2 so the poll phase treats it as failure
 if [ "$review_decision" = "CHANGES_REQUESTED" ]; then
+  echo "changes_requested"
+  exit 2
+fi
+
+# Unresolved review comments take priority over approval
+if [ "$unresolved_comments" != "0" ] && [ "$unresolved_comments" != "" ]; then
   echo "changes_requested"
   exit 2
 fi
@@ -80,10 +80,10 @@ if [ "$ci_failed" != "0" ] && [ "$ci_failed" != "" ]; then
   exit 2
 fi
 
-# Unresolved review comments trigger review handling (only when not approved)
-if [ "$unresolved_comments" != "0" ] && [ "$unresolved_comments" != "" ]; then
-  echo "changes_requested"
-  exit 2
+# APPROVED and no unresolved comments — ready to merge
+if [ "$review_decision" = "APPROVED" ]; then
+  echo "approved"
+  exit 0
 fi
 
 # No reviews yet or only REVIEW_REQUIRED — still waiting

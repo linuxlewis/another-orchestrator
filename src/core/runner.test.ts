@@ -1,6 +1,14 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  constants,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createRunner, resolveTicketRepo } from "./runner.js";
 import type { OrchestratorConfig, PlanFile, TicketState } from "./types.js";
@@ -852,6 +860,99 @@ phases:
       const result = await runner.runSingleTicket("test-plan", "TICKET-1");
 
       expect(result.status).toBe("complete");
+    });
+  });
+
+  it("check-pr-closed.sh is executable with correct shebang", async () => {
+    const projectRoot = resolve(
+      dirname(new URL(import.meta.url).pathname),
+      "../..",
+    );
+    const scriptPath = join(projectRoot, "scripts/check-pr-closed.sh");
+    await access(scriptPath, constants.X_OK);
+    const content = await readFile(scriptPath, "utf-8");
+    expect(content.startsWith("#!/usr/bin/env bash")).toBe(true);
+  });
+
+  describe("closed PR routing", () => {
+    const closedPrWorkflowYaml = `
+name: closed-pr-workflow
+description: "Workflow with closed PR routing"
+phases:
+  - id: await_review
+    type: poll
+    command: check-review.sh
+    intervalSeconds: 1
+    timeoutSeconds: 0
+    onSuccess: complete
+    onFailure: route_review_failure
+  - id: route_review_failure
+    type: script
+    command: check-pr-closed.sh
+    args:
+      - "{{ repo }}"
+      - "{{ context.pr_number }}"
+    onSuccess: pr_closed
+    onFailure: handle_review
+  - id: handle_review
+    type: terminal
+    notify: true
+  - id: pr_closed
+    type: terminal
+    notify: true
+  - id: complete
+    type: terminal
+`;
+
+    async function setupClosedPrTest(
+      reviewExitCode: number,
+      closedExitCode: number,
+    ) {
+      await writeFile(
+        join(scriptDir, "check-review.sh"),
+        `#!/usr/bin/env bash\nexit ${reviewExitCode}`,
+        { mode: 0o755 },
+      );
+      await writeFile(
+        join(scriptDir, "check-pr-closed.sh"),
+        `#!/usr/bin/env bash\nexit ${closedExitCode}`,
+        { mode: 0o755 },
+      );
+      await writeFile(
+        join(workflowDir, "closed-pr.yaml"),
+        closedPrWorkflowYaml,
+      );
+
+      const plan = makePlan({ workflow: "closed-pr-workflow" });
+      const ticket = makeTicket({
+        workflow: "closed-pr-workflow",
+        currentPhase: "await_review",
+        context: {
+          _pollStart_await_review: new Date(Date.now() - 1000).toISOString(),
+        },
+      });
+      await savePlan(plan);
+      await saveTicket(ticket);
+    }
+
+    it("poll failure routes to pr_closed when routing script exits 0", async () => {
+      await setupClosedPrTest(2, 0);
+
+      const runner = createRunner(config);
+      const result = await runner.runSingleTicket("test-plan", "TICKET-1");
+
+      expect(result.status).toBe("needs_attention");
+      expect(result.currentPhase).toBe("pr_closed");
+    });
+
+    it("poll failure routes to handle_review when routing script exits 1", async () => {
+      await setupClosedPrTest(2, 1);
+
+      const runner = createRunner(config);
+      const result = await runner.runSingleTicket("test-plan", "TICKET-1");
+
+      expect(result.status).toBe("needs_attention");
+      expect(result.currentPhase).toBe("handle_review");
     });
   });
 
