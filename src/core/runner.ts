@@ -37,12 +37,10 @@ const defaultProcessInspector: ProcessInspector = {
       process.kill(pid, 0);
       return true;
     } catch (error) {
-      return !(
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        error.code === "ESRCH"
-      );
+      if (error && typeof error === "object" && "code" in error) {
+        return error.code !== "ESRCH";
+      }
+      return true;
     }
   },
 
@@ -102,16 +100,15 @@ async function acquireDaemonLock(
     }
 
     const existingPid = await readLockPid(lockPath);
-    const command =
-      existingPid !== null && (await processInspector.isRunning(existingPid))
-        ? ((await processInspector.describe(existingPid))?.toLowerCase() ?? "")
-        : "";
     if (
       existingPid !== null &&
-      command.includes("orchestrator") &&
-      command.includes("daemon")
+      (await processInspector.isRunning(existingPid))
     ) {
-      throw new DaemonAlreadyRunningError(existingPid);
+      const command =
+        (await processInspector.describe(existingPid))?.toLowerCase() ?? "";
+      if (command.includes("orchestrator") && command.includes("daemon")) {
+        throw new DaemonAlreadyRunningError(existingPid);
+      }
     }
 
     await rm(lockPath, { force: true });

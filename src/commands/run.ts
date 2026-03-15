@@ -85,8 +85,6 @@ export function register(
         process.off("SIGINT", shutdown);
         process.off("SIGTERM", shutdown);
       }
-
-      console.log(chalk.bold("Daemon stopped"));
       process.exit(process.exitCode ?? 0);
     });
 
