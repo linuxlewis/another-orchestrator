@@ -43,6 +43,8 @@ const defaultProcessInspector: ProcessInspector = {
         return error.code !== "ESRCH";
       }
 
+      // Unknown errors are treated as "still running" so we do not
+      // accidentally steal a live daemon's lock.
       return true;
     }
   },
