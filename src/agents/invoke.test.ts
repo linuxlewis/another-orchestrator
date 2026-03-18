@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as shell from "../utils/shell.js";
 import {
   buildAgentArgs,
@@ -125,45 +125,45 @@ describe("invokeAgent", () => {
     expect(chunks.join("").trim()).toBe("streamed output");
   });
 
-  it("passes custom timeoutMs to execCommandStreaming", async () => {
-    const spy = vi.spyOn(shell, "execCommandStreaming").mockResolvedValue({
-      stdout: "ok",
-      stderr: "",
-      exitCode: 0,
+  describe("timeout handling", () => {
+    let spy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      spy = vi.spyOn(shell, "execCommandStreaming").mockResolvedValue({
+        stdout: "ok",
+        stderr: "",
+        exitCode: 0,
+      });
     });
 
-    await invokeAgent(
-      { command: "echo", defaultArgs: [] },
-      { prompt: "hello", timeoutMs: 120000 },
-    );
-
-    expect(spy).toHaveBeenCalledWith(
-      "echo",
-      ["hello"],
-      expect.objectContaining({ timeoutMs: 120000 }),
-    );
-
-    spy.mockRestore();
-  });
-
-  it("uses DEFAULT_TIMEOUT_MS when timeoutMs is not provided", async () => {
-    const spy = vi.spyOn(shell, "execCommandStreaming").mockResolvedValue({
-      stdout: "ok",
-      stderr: "",
-      exitCode: 0,
+    afterEach(() => {
+      spy.mockRestore();
     });
 
-    await invokeAgent(
-      { command: "echo", defaultArgs: [] },
-      { prompt: "hello" },
-    );
+    it("passes custom timeoutMs to execCommandStreaming", async () => {
+      await invokeAgent(
+        { command: "echo", defaultArgs: [] },
+        { prompt: "hello", timeoutMs: 120000 },
+      );
 
-    expect(spy).toHaveBeenCalledWith(
-      "echo",
-      ["hello"],
-      expect.objectContaining({ timeoutMs: 60 * 60 * 1000 }),
-    );
+      expect(spy).toHaveBeenCalledWith(
+        "echo",
+        ["hello"],
+        expect.objectContaining({ timeoutMs: 120000 }),
+      );
+    });
 
-    spy.mockRestore();
+    it("uses DEFAULT_TIMEOUT_MS when timeoutMs is not provided", async () => {
+      await invokeAgent(
+        { command: "echo", defaultArgs: [] },
+        { prompt: "hello" },
+      );
+
+      expect(spy).toHaveBeenCalledWith(
+        "echo",
+        ["hello"],
+        expect.objectContaining({ timeoutMs: 60 * 60 * 1000 }),
+      );
+    });
   });
 });
