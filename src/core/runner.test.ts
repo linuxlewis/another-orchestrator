@@ -960,6 +960,17 @@ phases:
     expect(content.startsWith("#!/usr/bin/env bash")).toBe(true);
   });
 
+  it("route-review.sh is executable with correct shebang", async () => {
+    const projectRoot = resolve(
+      dirname(new URL(import.meta.url).pathname),
+      "../..",
+    );
+    const scriptPath = join(projectRoot, "scripts/route-review.sh");
+    await access(scriptPath, constants.X_OK);
+    const content = await readFile(scriptPath, "utf-8");
+    expect(content.startsWith("#!/usr/bin/env bash")).toBe(true);
+  });
+
   describe("closed PR routing", () => {
     const closedPrWorkflowYaml = `
 name: closed-pr-workflow
@@ -1039,6 +1050,110 @@ phases:
 
       expect(result.status).toBe("needs_attention");
       expect(result.currentPhase).toBe("handle_review");
+    });
+  });
+
+  describe("review state routing", () => {
+    const reviewRoutingWorkflowYaml = `
+name: review-routing-workflow
+description: "Workflow with explicit review state routing"
+phases:
+  - id: await_review
+    type: poll
+    command: check-review.sh
+    intervalSeconds: 1
+    timeoutSeconds: 86400
+    capture:
+      review_state: stdout
+    onSuccess: route_review
+    onFailure: route_review_failure
+  - id: route_review
+    type: script
+    command: route-review.sh
+    args:
+      - "{{ context.review_state }}"
+    onSuccess: await_merge
+    onFailure: handle_review
+  - id: route_review_failure
+    type: script
+    command: check-pr-closed.sh
+    args:
+      - "{{ repo }}"
+      - "{{ context.pr_number }}"
+    onSuccess: pr_closed
+    onFailure: escalate
+  - id: await_merge
+    type: terminal
+  - id: handle_review
+    type: terminal
+    notify: true
+  - id: pr_closed
+    type: terminal
+    notify: true
+  - id: escalate
+    type: terminal
+    notify: true
+`;
+
+    async function setupReviewRoutingTest(reviewState: string) {
+      await writeFile(
+        join(scriptDir, "check-review.sh"),
+        `#!/usr/bin/env bash\necho "${reviewState}"\nexit 0`,
+        { mode: 0o755 },
+      );
+      await writeFile(
+        join(scriptDir, "route-review.sh"),
+        `#!/usr/bin/env bash
+set -euo pipefail
+review_state="$(printf '%s' "$1" | tr -d '[:space:]')"
+if [ "$review_state" = "approved" ] || [ "$review_state" = "merged" ]; then
+  exit 0
+fi
+exit 1
+`,
+        { mode: 0o755 },
+      );
+      await writeFile(
+        join(scriptDir, "check-pr-closed.sh"),
+        "#!/usr/bin/env bash\nexit 1",
+        { mode: 0o755 },
+      );
+      await writeFile(
+        join(workflowDir, "review-routing.yaml"),
+        reviewRoutingWorkflowYaml,
+      );
+
+      const plan = makePlan({ workflow: "review-routing-workflow" });
+      const ticket = makeTicket({
+        workflow: "review-routing-workflow",
+        currentPhase: "await_review",
+        context: {
+          pr_number: "123",
+        },
+      });
+      await savePlan(plan);
+      await saveTicket(ticket);
+    }
+
+    it("routes commented review state into handle_review", async () => {
+      await setupReviewRoutingTest("commented");
+
+      const runner = createRunner(config);
+      const result = await runner.runSingleTicket("test-plan", "TICKET-1");
+
+      expect(result.status).toBe("needs_attention");
+      expect(result.currentPhase).toBe("handle_review");
+      expect(result.context.review_state).toBe("commented\n");
+    });
+
+    it("routes approved review state into await_merge", async () => {
+      await setupReviewRoutingTest("approved");
+
+      const runner = createRunner(config);
+      const result = await runner.runSingleTicket("test-plan", "TICKET-1");
+
+      expect(result.status).toBe("complete");
+      expect(result.currentPhase).toBe("await_merge");
     });
   });
 
