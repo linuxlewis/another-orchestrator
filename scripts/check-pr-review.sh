@@ -201,19 +201,17 @@ ci_failed=$(gh pr checks "$PR_NUMBER" --json bucket \
   --jq '[.[] | select(.bucket == "fail")] | length' 2>/dev/null) || ci_failed="0"
 
 # CHANGES_REQUESTED is actionable
-if [ "$review_decision" = "CHANGES_REQUESTED" ] || {
-  [ "$unresolved_comments" != "0" ] && [ "$unresolved_comments" != "" ]
-}; then
+if [ "$review_decision" = "CHANGES_REQUESTED" ] || [ "${unresolved_comments:-0}" -gt 0 ]; then
   echo "changes_requested"
   exit 0
 fi
 
-if [ "$actionable_pr_comments" != "0" ] && [ "$actionable_pr_comments" != "" ]; then
+if [ "${actionable_pr_comments:-0}" -gt 0 ]; then
   echo "commented"
   exit 0
 fi
 
-if [ "$ci_failed" != "0" ] && [ "$ci_failed" != "" ]; then
+if [ "${ci_failed:-0}" -gt 0 ]; then
   echo "ci_failed"
   exit 0
 fi
