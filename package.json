@@ -14,7 +14,7 @@
     "skills"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/link-skills.js",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
     "test": "vitest run",
@@ -25,7 +25,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "^0.61.0",
     "@sinclair/typebox": "^0.34.48",
     "chalk": "^5.4.1",
     "chokidar": "^4.0.3",

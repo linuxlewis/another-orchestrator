@@ -5,4 +5,5 @@ logs/
 *.log
 .DS_Store
 .pi/
+skills/.claude/
 orchestrator.yaml
