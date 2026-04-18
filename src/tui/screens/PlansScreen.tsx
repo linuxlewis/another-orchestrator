@@ -4,6 +4,12 @@ import type { PlanFile, TicketState } from "../../core/types.js";
 import { type Column, Table } from "../components/Table.js";
 import { formatAge } from "../utils.js";
 
+const planStatusColors: Record<string, string> = {
+  active: "cyan",
+  paused: "yellow",
+  complete: "green",
+};
+
 function progressBar(completed: number, total: number): string {
   if (total === 0) return "0/0 [        ]";
   const filled = Math.round((completed / total) * 8);
@@ -43,14 +49,9 @@ export function PlansScreen({
     {
       title: "STATUS",
       width: 12,
-      render: (r) => {
-        const colors: Record<string, string> = {
-          active: "cyan",
-          paused: "yellow",
-          complete: "green",
-        };
-        return <Text color={colors[r.plan.status]}>{r.plan.status}</Text>;
-      },
+      render: (r) => (
+        <Text color={planStatusColors[r.plan.status]}>{r.plan.status}</Text>
+      ),
     },
     {
       title: "PROGRESS",

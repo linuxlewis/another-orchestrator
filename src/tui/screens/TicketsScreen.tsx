@@ -35,22 +35,20 @@ function buildPhaseDisplay(
   workflows: Map<string, WorkflowDefinition>,
 ): React.ReactNode {
   const workflow = workflows.get(ticket.workflow);
-  if (!workflow) {
-    return <Text dimColor>{ticket.currentPhase}</Text>;
-  }
+  const phaseIndex =
+    workflow?.phases.findIndex((p) => p.id === ticket.currentPhase) ?? -1;
 
-  const phaseIndex = workflow.phases.findIndex(
-    (p) => p.id === ticket.currentPhase,
-  );
-  if (phaseIndex === -1) {
+  if (!workflow || phaseIndex === -1) {
     return <Text dimColor>{ticket.currentPhase}</Text>;
   }
 
   const phase = workflow.phases[phaseIndex];
   const color = phaseTypeColors[phase.type] ?? "white";
-  const label = `${phase.type} ${phaseIndex + 1}/${workflow.phases.length}`;
-
-  return <Text color={color}>{label}</Text>;
+  return (
+    <Text
+      color={color}
+    >{`${phase.type} ${phaseIndex + 1}/${workflow.phases.length}`}</Text>
+  );
 }
 
 export function TicketsScreen({
@@ -61,16 +59,11 @@ export function TicketsScreen({
 }: TicketsScreenProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const blockedByMap = new Map<string, string[]>();
-  for (const entry of plan.tickets) {
-    if (entry.blockedBy.length > 0) {
-      blockedByMap.set(entry.ticketId, entry.blockedBy);
-    }
-  }
-
   const rows: TicketRow[] = tickets.map((ticket) => ({
     ticket,
-    blockedBy: blockedByMap.get(ticket.ticketId)?.[0] ?? null,
+    blockedBy:
+      plan.tickets.find((e) => e.ticketId === ticket.ticketId)?.blockedBy[0] ??
+      null,
     phaseDisplay: buildPhaseDisplay(ticket, workflows),
     totalRetries: Object.values(ticket.retries).reduce((a, b) => a + b, 0),
   }));
