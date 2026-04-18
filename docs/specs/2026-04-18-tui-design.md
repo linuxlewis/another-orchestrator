@@ -7,6 +7,8 @@
 
 A K9s-style terminal UI for monitoring active plans and tickets and taking light management actions (pause, resume, retry, skip). Built with Ink (React for CLIs). Opens via `orchestrator tui`.
 
+**Visual reference:** Open [`tui-mockups/screens-detail.html`](tui-mockups/screens-detail.html) in a browser to see the target look for all three screens.
+
 ## Navigation Model
 
 Three-level hierarchy with breadcrumb navigation:
