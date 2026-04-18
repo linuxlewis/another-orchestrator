@@ -35,7 +35,7 @@ orchestrator init
 
 ### The Interactive Agent
 
-The primary interface is `orchestrator interactive`. It launches an LLM-powered planning session (PI) where you describe what you want done in natural language. The agent knows how to create plans, manage configuration, explore your workspace, author workflows, and connect to project management tools like Linear or GitHub Issues.
+The primary interface is `orchestrator interactive`. It launches an LLM-powered planning session (PI) where you describe what you want done in natural language. The agent knows how to create plans, manage configuration, explore your workspace, author workflows, and connect to project management tools like Linear, GitHub Issues, or filesystem issue files.
 
 Run it from your workspace directory (the root where your repos live):
 
@@ -201,6 +201,7 @@ skills/                       # Agent Skills documentation
   providers/
     linear/SKILL.md           # Linear integration
     github-issues/SKILL.md    # GitHub Issues integration
+    filesystem/SKILL.md       # Filesystem issue files (use scripts/jira-to-markdown.sh to import from JIRA)
 
 docs/                         # Reference documentation
   workflows.md                # Workflow authoring reference
