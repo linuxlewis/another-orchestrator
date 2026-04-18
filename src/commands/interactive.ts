@@ -1,13 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import chalk from "chalk";
 import type { Command } from "commander";
-import {
-  buildPlanEnv,
-  runPiInteractive,
-  spawnInteractive,
-} from "../agents/interactive.js";
+import { buildPlanEnv, spawnInteractive } from "../agents/interactive.js";
 import {
   findConfigFile,
   type LoadConfigOptions,
@@ -22,7 +17,7 @@ export function register(
   program
     .command("interactive")
     .description(
-      "Launch an interactive PI session for planning and configuration",
+      "Launch an interactive Claude session for planning and configuration",
     )
     .option("-r, --repo <path>", "Target repository or workspace path")
     .option("-w, --workflow <name>", "Default workflow to use")
@@ -37,7 +32,7 @@ export function register(
         const config = await loadConfig(configOpts);
         const configPath = findConfigFile(configOpts.configPath);
 
-        const agentName = resolveAgent(config, null, null, "pi");
+        const agentName = resolveAgent(config, null, null, null);
         const agentConfig = config.agents[agentName];
 
         const repoCwd = resolve(opts.repo ?? ".");
@@ -49,7 +44,22 @@ export function register(
           configPath,
         });
 
-        // Write .pi/mcp.json if mcpServers are configured
+        // Build args for the agent
+        const args = [...agentConfig.defaultArgs];
+
+        // Append the interactive system prompt if available
+        const systemPromptPath = join(
+          config.promptDir,
+          "interactive-system.md",
+        );
+        try {
+          const systemPrompt = await readFile(systemPromptPath, "utf-8");
+          args.push("--append-system-prompt", systemPrompt);
+        } catch {
+          // No system prompt file — proceed without it
+        }
+
+        // Write MCP config if mcpServers are configured
         if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
           const mcpConfig: Record<string, unknown> = { mcpServers: {} };
           for (const [name, server] of Object.entries(config.mcpServers)) {
@@ -72,12 +82,18 @@ export function register(
             (mcpConfig.mcpServers as Record<string, unknown>)[name] = entry;
           }
 
-          const mcpJsonPath = join(repoCwd, ".pi", "mcp.json");
-          await mkdir(dirname(mcpJsonPath), { recursive: true });
+          const mcpJsonDir = join(repoCwd, ".claude");
+          const mcpJsonPath = join(mcpJsonDir, "mcp.json");
+          await mkdir(mcpJsonDir, { recursive: true });
           await writeFile(mcpJsonPath, JSON.stringify(mcpConfig, null, 2));
+          args.push("--mcp-config", mcpJsonPath);
         }
 
+        // Add skills directory so Claude has access to skill docs
+        args.push("--add-dir", config.skillsDir);
+
         console.log(chalk.bold("Launching interactive planning session..."));
+        console.log(chalk.dim(`  Agent: ${agentName}`));
         console.log(chalk.dim(`  CWD: ${repoCwd}`));
         if (planEnv.ORCHESTRATOR_WORKFLOW) {
           console.log(
@@ -86,52 +102,13 @@ export function register(
         }
         console.log();
 
-        if (agentName === "pi") {
-          // Call PI library directly — no need for `pi` to be on PATH
-          const systemPromptPath = join(
-            config.promptDir,
-            "interactive-system.md",
-          );
-          const piPkgEntry = fileURLToPath(
-            import.meta.resolve("@mariozechner/pi-coding-agent"),
-          );
-          const piPkgDir = dirname(dirname(piPkgEntry));
-          const questionExtPath = join(
-            piPkgDir,
-            "examples",
-            "extensions",
-            "question.ts",
-          );
-          const packageDir = resolve(
-            dirname(fileURLToPath(import.meta.url)),
-            "../..",
-          );
-          const bannerExtPath = join(packageDir, "extensions", "banner.ts");
-          const piArgs = [
-            ...agentConfig.defaultArgs,
-            "--skill",
-            config.skillsDir,
-            "--append-system-prompt",
-            systemPromptPath,
-            "--extension",
-            questionExtPath,
-            "--extension",
-            bannerExtPath,
-          ];
-          await runPiInteractive({
-            args: piArgs,
-            cwd: repoCwd,
-            env: planEnv,
-          });
-        } else {
-          const exitCode = await spawnInteractive({
-            command: agentConfig.command,
-            args: agentConfig.defaultArgs,
-            cwd: repoCwd,
-            env: planEnv,
-          });
-          process.exitCode = exitCode;
-        }
+        const exitCode = await spawnInteractive({
+          command: agentConfig.command,
+          args,
+          cwd: repoCwd,
+          env: planEnv,
+        });
+        process.exitCode = exitCode;
       },
     );
 }

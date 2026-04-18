@@ -1,4 +1,5 @@
 ---
+name: cli
 description: Use and explain the orchestrator CLI commands
 ---
 

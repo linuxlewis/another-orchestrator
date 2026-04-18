@@ -1,4 +1,5 @@
 ---
+name: github-issues
 description: Fetch issues from GitHub and create orchestrator state files
 ---
 

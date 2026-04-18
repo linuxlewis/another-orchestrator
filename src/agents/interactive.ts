@@ -42,35 +42,6 @@ export function buildPlanEnv(
   return env;
 }
 
-export interface RunPiOptions {
-  args: string[];
-  cwd: string;
-  env: Record<string, string>;
-}
-
-export async function runPiInteractive(opts: RunPiOptions): Promise<void> {
-  const originalCwd = process.cwd();
-  const originalEnv = { ...process.env };
-
-  try {
-    process.chdir(opts.cwd);
-    Object.assign(process.env, opts.env);
-
-    const { main } = await import("@mariozechner/pi-coding-agent");
-    await main(opts.args);
-  } finally {
-    process.chdir(originalCwd);
-    // Restore env: remove keys we added, restore originals
-    for (const key of Object.keys(opts.env)) {
-      if (originalEnv[key] === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = originalEnv[key];
-      }
-    }
-  }
-}
-
 export function spawnInteractive(
   opts: SpawnInteractiveOptions,
 ): Promise<number> {

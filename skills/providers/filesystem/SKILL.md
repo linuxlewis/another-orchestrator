@@ -1,4 +1,5 @@
 ---
+name: filesystem
 description: Read issue Markdown files from ~/.orchestrator/issues/ and create orchestrator state files
 ---
 

@@ -1,4 +1,5 @@
 ---
+name: config
 description: Read and modify the orchestrator configuration file
 ---
 

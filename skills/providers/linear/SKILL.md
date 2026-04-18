@@ -1,4 +1,5 @@
 ---
+name: linear
 description: Fetch tickets from Linear and create orchestrator state files
 ---
 

@@ -7,3 +7,4 @@ logs/
 .pi/
 skills/.claude/
 orchestrator.yaml
+.vitest_tmp

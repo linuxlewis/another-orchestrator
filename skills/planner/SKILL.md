@@ -1,4 +1,5 @@
 ---
+name: planner
 description: Create orchestrator plans and tickets from work items
 ---
 
