@@ -1,8 +1,9 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Box, useApp, useInput, useStdout } from "ink";
-import { useCallback } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { StateManager } from "../core/state.js";
-import type { TicketState } from "../core/types.js";
+import type { TicketState, WorkflowDefinition } from "../core/types.js";
+import type { WorkflowLoader } from "../core/workflow.js";
 import { Breadcrumb } from "./components/Breadcrumb.js";
 import { Footer, type Hotkey } from "./components/Footer.js";
 import { Header } from "./components/Header.js";
@@ -13,17 +14,27 @@ import {
 } from "./hooks/useStateData.js";
 import { queryClient } from "./queries/query-client.js";
 import { PlansScreen } from "./screens/PlansScreen.js";
+import { TicketsScreen } from "./screens/TicketsScreen.js";
 
 interface AppProps {
   stateManager: StateManager;
   stateDir: string;
+  workflowLoader?: WorkflowLoader;
 }
 
-const breadcrumbPath = ["Plans"];
+type Screen = { type: "plans" } | { type: "tickets"; planId: string };
 
-const hotkeys: Hotkey[] = [
+const PLANS_HOTKEYS: Hotkey[] = [
   { key: "↑↓", label: "navigate" },
   { key: "⏎", label: "open" },
+  { key: "/", label: "filter" },
+  { key: "q", label: "quit" },
+];
+
+const TICKETS_HOTKEYS: Hotkey[] = [
+  { key: "↑↓", label: "navigate" },
+  { key: "⏎", label: "open" },
+  { key: "esc", label: "back" },
   { key: "/", label: "filter" },
   { key: "q", label: "quit" },
 ];
@@ -36,17 +47,26 @@ function countRunning(ticketsByPlan: Map<string, TicketState[]>): number {
   );
 }
 
-export function App({ stateManager, stateDir }: AppProps) {
+export function App({ stateManager, stateDir, workflowLoader }: AppProps) {
   return (
     <QueryClientProvider client={queryClient}>
-      <AppInner stateManager={stateManager} stateDir={stateDir} />
+      <AppInner
+        stateManager={stateManager}
+        stateDir={stateDir}
+        workflowLoader={workflowLoader}
+      />
     </QueryClientProvider>
   );
 }
 
-function AppInner({ stateManager, stateDir }: AppProps) {
+function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
+
+  const [screen, setScreen] = useState<Screen>({ type: "plans" });
+  const [workflows, setWorkflows] = useState<Map<string, WorkflowDefinition>>(
+    new Map(),
+  );
 
   const { data: plans = [] } = usePlans(stateManager);
   const { data: ticketsByPlan = new Map<string, TicketState[]>() } =
@@ -54,15 +74,55 @@ function AppInner({ stateManager, stateDir }: AppProps) {
 
   useStateWatcher(stateDir);
 
-  // Global quit key
+  // Track which workflows are loading/loaded to avoid duplicate fetches
+  const loadedWorkflows = useRef(new Set<string>());
+
+  const ensureWorkflow = useCallback(
+    async (workflowName: string) => {
+      if (!workflowLoader || loadedWorkflows.current.has(workflowName)) return;
+      loadedWorkflows.current.add(workflowName);
+      try {
+        const wf = await workflowLoader.loadWorkflow(workflowName);
+        setWorkflows((prev) => {
+          const next = new Map(prev);
+          next.set(workflowName, wf);
+          return next;
+        });
+      } catch {
+        // Workflow not found — ignore
+      }
+    },
+    [workflowLoader],
+  );
+
+  // Load workflows for all tickets of the selected plan
+  const selectedPlan =
+    screen.type === "tickets"
+      ? plans.find((p) => p.id === screen.planId)
+      : undefined;
+  const selectedTickets =
+    screen.type === "tickets" ? (ticketsByPlan.get(screen.planId) ?? []) : [];
+
+  // Eagerly load workflows for visible tickets
+  useMemo(() => {
+    const workflowNames = new Set(selectedTickets.map((t) => t.workflow));
+    for (const name of workflowNames) {
+      ensureWorkflow(name);
+    }
+  }, [selectedTickets, ensureWorkflow]);
+
+  // Global keys
   useInput(
     useCallback(
-      (input) => {
+      (input, key) => {
         if (input === "q") {
           exit();
         }
+        if (key.escape && screen.type === "tickets") {
+          setScreen({ type: "plans" });
+        }
       },
-      [exit],
+      [exit, screen],
     ),
   );
 
@@ -72,19 +132,37 @@ function AppInner({ stateManager, stateDir }: AppProps) {
   const terminalHeight = stdout?.rows ?? 24;
   const tableHeight = Math.max(1, terminalHeight - 6);
 
+  const breadcrumbPath = useMemo(() => {
+    if (screen.type === "tickets" && selectedPlan) {
+      return ["Plans", selectedPlan.name];
+    }
+    return ["Plans"];
+  }, [screen, selectedPlan]);
+
+  const hotkeys = screen.type === "tickets" ? TICKETS_HOTKEYS : PLANS_HOTKEYS;
+
   return (
     <Box flexDirection="column" height={terminalHeight}>
       <Header planCount={plans.length} runningCount={runningCount} />
       <Breadcrumb path={breadcrumbPath} />
       <Box flexDirection="column" flexGrow={1}>
-        <PlansScreen
-          plans={plans}
-          ticketsByPlan={ticketsByPlan}
-          onSelectPlan={() => {
-            // Ticket screen navigation is out of scope for TUI-001
-          }}
-          height={tableHeight}
-        />
+        {screen.type === "tickets" && selectedPlan ? (
+          <TicketsScreen
+            plan={selectedPlan}
+            tickets={selectedTickets}
+            workflows={workflows}
+            height={tableHeight}
+          />
+        ) : (
+          <PlansScreen
+            plans={plans}
+            ticketsByPlan={ticketsByPlan}
+            onSelectPlan={(planId) => {
+              setScreen({ type: "tickets", planId });
+            }}
+            height={tableHeight}
+          />
+        )}
       </Box>
       <Footer hotkeys={hotkeys} />
     </Box>
