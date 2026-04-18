@@ -41,10 +41,7 @@ function AppInner({ stateManager, stateDir }: AppProps) {
 
   const { data: plans = [] } = usePlans(stateManager);
   const { data: ticketsByPlan = new Map<string, TicketState[]>() } =
-    useTicketsByPlan(
-    stateManager,
-    plans,
-  );
+    useTicketsByPlan(stateManager, plans);
 
   useStateWatcher(stateDir);
 
