@@ -4,6 +4,7 @@ import chalk from "chalk";
 import type { Command } from "commander";
 import { XMLParser } from "fast-xml-parser";
 import TurndownService from "turndown";
+import YAML from "yaml";
 import {
   type LoadConfigOptions,
   resolveOrchestratorHome,
@@ -101,14 +102,18 @@ function parseItem(item: XmlNode): Issue {
 }
 
 function buildMarkdown(issue: Issue): string {
+  const frontmatter: Record<string, string> = {
+    id: issue.id,
+    title: issue.title,
+    type: issue.type,
+  };
+  if (issue.sprint) frontmatter.sprint = issue.sprint;
+  if (issue.url) frontmatter.url = issue.url;
+  if (issue.status) frontmatter.status = issue.status;
+
   const lines = [
     "---",
-    `id: ${issue.id}`,
-    `title: "${issue.title.replace(/"/g, '\\"')}"`,
-    `type: ${issue.type}`,
-    ...(issue.sprint ? [`sprint: "${issue.sprint}"`] : []),
-    ...(issue.url ? [`url: ${issue.url}`] : []),
-    ...(issue.status ? [`status: "${issue.status}"`] : []),
+    YAML.stringify(frontmatter).trim(),
     "---",
     "",
     "## Description",
@@ -139,7 +144,16 @@ function buildMarkdown(issue: Issue): string {
 
 export function convertJiraXml(xmlPath: string, outputDir: string): string[] {
   const xml = readFileSync(xmlPath, "utf-8");
-  const parsed = parser.parse(xml);
+
+  let parsed: XmlNode;
+  try {
+    parsed = parser.parse(xml);
+  } catch (err) {
+    throw new Error(
+      `Failed to parse JIRA XML: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   const items: XmlNode[] = parsed?.rss?.channel?.item ?? [];
 
   if (items.length === 0)
@@ -154,7 +168,8 @@ export function convertJiraXml(xmlPath: string, outputDir: string): string[] {
       console.warn(chalk.yellow("Warning:"), "Skipping item with no key.");
       continue;
     }
-    const outputPath = join(outputDir, `${issue.id}.md`);
+    const safeId = issue.id.replace(/[^a-zA-Z0-9-]/g, "_");
+    const outputPath = join(outputDir, `${safeId}.md`);
     writeFileSync(outputPath, buildMarkdown(issue), "utf-8");
     written.push(outputPath);
   }
