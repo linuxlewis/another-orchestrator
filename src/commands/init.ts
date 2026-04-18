@@ -18,7 +18,7 @@ export function register(
       const targetDir = opts.dir
         ? resolve(opts.dir)
         : resolveOrchestratorHome();
-      const dirs = ["state", "logs"];
+      const dirs = ["state", "logs", "issues"];
 
       for (const dir of dirs) {
         await mkdir(join(targetDir, dir), { recursive: true });
