@@ -1,17 +1,19 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Box, useApp, useInput, useStdout } from "ink";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type { StateManager } from "../core/state.js";
-import type { TicketState, WorkflowDefinition } from "../core/types.js";
+import type { TicketState } from "../core/types.js";
 import type { WorkflowLoader } from "../core/workflow.js";
 import { Breadcrumb } from "./components/Breadcrumb.js";
 import { Footer, type Hotkey } from "./components/Footer.js";
 import { Header } from "./components/Header.js";
+import { useScreen } from "./hooks/useScreen.js";
 import {
   usePlans,
   useStateWatcher,
   useTicketsByPlan,
 } from "./hooks/useStateData.js";
+import { useWorkflows } from "./hooks/useWorkflows.js";
 import { queryClient } from "./queries/query-client.js";
 import { PlansScreen } from "./screens/PlansScreen.js";
 import { TicketsScreen } from "./screens/TicketsScreen.js";
@@ -21,8 +23,6 @@ interface AppProps {
   stateDir: string;
   workflowLoader?: WorkflowLoader;
 }
-
-type Screen = { type: "plans" } | { type: "tickets"; planId: string };
 
 const PLANS_HOTKEYS: Hotkey[] = [
   { key: "↑↓", label: "navigate" },
@@ -63,10 +63,7 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
 
-  const [screen, setScreen] = useState<Screen>({ type: "plans" });
-  const [workflows, setWorkflows] = useState<Map<string, WorkflowDefinition>>(
-    new Map(),
-  );
+  const { screen, showPlansScreen, showTicketsScreen } = useScreen();
 
   const { data: plans = [] } = usePlans(stateManager);
   const { data: ticketsByPlan = new Map<string, TicketState[]>() } =
@@ -74,28 +71,6 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
 
   useStateWatcher(stateDir);
 
-  // Track which workflows are loading/loaded to avoid duplicate fetches
-  const loadedWorkflows = useRef(new Set<string>());
-
-  const ensureWorkflow = useCallback(
-    async (workflowName: string) => {
-      if (!workflowLoader || loadedWorkflows.current.has(workflowName)) return;
-      loadedWorkflows.current.add(workflowName);
-      try {
-        const wf = await workflowLoader.loadWorkflow(workflowName);
-        setWorkflows((prev) => {
-          const next = new Map(prev);
-          next.set(workflowName, wf);
-          return next;
-        });
-      } catch {
-        // Workflow not found — ignore
-      }
-    },
-    [workflowLoader],
-  );
-
-  // Load workflows for all tickets of the selected plan
   const selectedPlan =
     screen.type === "tickets"
       ? plans.find((p) => p.id === screen.planId)
@@ -103,13 +78,14 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
   const selectedTickets =
     screen.type === "tickets" ? (ticketsByPlan.get(screen.planId) ?? []) : [];
 
-  // Eagerly load workflows for visible tickets
-  useMemo(() => {
-    const workflowNames = new Set(selectedTickets.map((t) => t.workflow));
-    for (const name of workflowNames) {
-      ensureWorkflow(name);
-    }
-  }, [selectedTickets, ensureWorkflow]);
+  const workflowNames = useMemo(
+    () => selectedTickets.map((t) => t.workflow),
+    [selectedTickets],
+  );
+  const { data: workflows = new Map() } = useWorkflows(
+    workflowLoader,
+    workflowNames,
+  );
 
   // Global keys
   useInput(
@@ -119,10 +95,10 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
           exit();
         }
         if (key.escape && screen.type === "tickets") {
-          setScreen({ type: "plans" });
+          showPlansScreen();
         }
       },
-      [exit, screen],
+      [exit, screen, showPlansScreen],
     ),
   );
 
@@ -158,7 +134,7 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
             plans={plans}
             ticketsByPlan={ticketsByPlan}
             onSelectPlan={(planId) => {
-              setScreen({ type: "tickets", planId });
+              showTicketsScreen({ planId });
             }}
             height={tableHeight}
           />
