@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { Box, Text } from "ink";
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type {
   PlanFile,
   TicketState,
@@ -15,6 +15,7 @@ interface TicketsScreenProps {
   tickets: TicketState[];
   workflows: Map<string, WorkflowDefinition>;
   height?: number;
+  onSelectedChange?: (index: number) => void;
 }
 
 const PHASE_COLORS: Record<string, (text: string) => string> = {
@@ -91,8 +92,17 @@ export function TicketsScreen({
   tickets,
   workflows,
   height,
+  onSelectedChange,
 }: TicketsScreenProps): React.ReactElement {
   const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const handleSelect = useCallback(
+    (index: number) => {
+      setSelectedIndex(index);
+      onSelectedChange?.(index);
+    },
+    [onSelectedChange],
+  );
 
   const rows = useMemo(() => {
     return tickets.map((ticket) => {
@@ -127,7 +137,7 @@ export function TicketsScreen({
       columns={COLUMNS}
       rows={rows}
       selectedIndex={selectedIndex}
-      onSelect={setSelectedIndex}
+      onSelect={handleSelect}
       height={height}
     />
   );

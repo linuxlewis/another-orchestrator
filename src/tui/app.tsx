@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Box, useApp, useInput, useStdout } from "ink";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { StateManager } from "../core/state.js";
 import type { TicketState } from "../core/types.js";
 import type { WorkflowLoader } from "../core/workflow.js";
@@ -13,6 +13,10 @@ import {
   useStateWatcher,
   useTicketsByPlan,
 } from "./hooks/useStateData.js";
+import {
+  getStatusHotkeys,
+  useTicketActions,
+} from "./hooks/useTicketActions.js";
 import { useWorkflows } from "./hooks/useWorkflows.js";
 import { queryClient } from "./queries/query-client.js";
 import { PlansScreen } from "./screens/PlansScreen.js";
@@ -31,12 +35,9 @@ const PLANS_HOTKEYS: Hotkey[] = [
   { key: "q", label: "quit" },
 ];
 
-const TICKETS_HOTKEYS: Hotkey[] = [
+const TICKETS_NAV_HOTKEYS: Hotkey[] = [
   { key: "↑↓", label: "navigate" },
-  { key: "⏎", label: "open" },
   { key: "esc", label: "back" },
-  { key: "/", label: "filter" },
-  { key: "q", label: "quit" },
 ];
 
 function countRunning(ticketsByPlan: Map<string, TicketState[]>): number {
@@ -71,6 +72,8 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
 
   useStateWatcher(stateDir);
 
+  const [selectedTicketIndex, setSelectedTicketIndex] = useState(0);
+
   const selectedPlan =
     currentScreen.type === "tickets"
       ? plans.find((p) => p.id === currentScreen.planId)
@@ -79,6 +82,10 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
     currentScreen.type === "tickets"
       ? (ticketsByPlan.get(currentScreen.planId) ?? [])
       : [];
+  const selectedTicket =
+    currentScreen.type === "tickets"
+      ? selectedTickets[selectedTicketIndex]
+      : undefined;
 
   const workflowNames = useMemo(
     () => selectedTickets.map((t) => t.workflow),
@@ -88,6 +95,9 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
     workflowLoader,
     workflowNames,
   );
+
+  const { pause, resume, retry, skip, copySessionId, footerMessage } =
+    useTicketActions(stateManager, selectedTicket);
 
   // Global keys
   useInput(
@@ -99,8 +109,25 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
         if (key.escape && currentScreen.type === "tickets") {
           showPlansScreen();
         }
+        // Ticket action hotkeys
+        if (currentScreen.type === "tickets") {
+          if (input === "p") pause();
+          if (input === "R") resume();
+          if (input === "r") retry();
+          if (input === "s") skip();
+          if (input === "c") copySessionId();
+        }
       },
-      [exit, currentScreen, showPlansScreen],
+      [
+        exit,
+        currentScreen,
+        showPlansScreen,
+        pause,
+        resume,
+        retry,
+        skip,
+        copySessionId,
+      ],
     ),
   );
 
@@ -117,8 +144,17 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
     return ["Plans"];
   }, [currentScreen, selectedPlan]);
 
-  const hotkeys =
-    currentScreen.type === "tickets" ? TICKETS_HOTKEYS : PLANS_HOTKEYS;
+  const hotkeys = useMemo(() => {
+    if (currentScreen.type === "tickets") {
+      const actionHotkeys = getStatusHotkeys(selectedTicket?.status);
+      return [
+        ...TICKETS_NAV_HOTKEYS,
+        ...actionHotkeys,
+        { key: "q", label: "quit" },
+      ];
+    }
+    return PLANS_HOTKEYS;
+  }, [currentScreen, selectedTicket?.status]);
 
   return (
     <Box flexDirection="column" height={terminalHeight}>
@@ -131,6 +167,7 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
             tickets={selectedTickets}
             workflows={workflows}
             height={tableHeight}
+            onSelectedChange={setSelectedTicketIndex}
           />
         ) : (
           <PlansScreen
@@ -143,7 +180,7 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
           />
         )}
       </Box>
-      <Footer hotkeys={hotkeys} />
+      <Footer hotkeys={hotkeys} message={footerMessage} />
     </Box>
   );
 }
