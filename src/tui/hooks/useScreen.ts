@@ -29,7 +29,7 @@ export function useScreen() {
   );
 
   return {
-    screen,
+    currentScreen: screen,
     showPlansScreen,
     showTicketsScreen,
   };

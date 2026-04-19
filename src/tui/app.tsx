@@ -63,7 +63,7 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
 
-  const { screen, showPlansScreen, showTicketsScreen } = useScreen();
+  const { currentScreen, showPlansScreen, showTicketsScreen } = useScreen();
 
   const { data: plans = [] } = usePlans(stateManager);
   const { data: ticketsByPlan = new Map<string, TicketState[]>() } =
@@ -72,11 +72,13 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
   useStateWatcher(stateDir);
 
   const selectedPlan =
-    screen.type === "tickets"
-      ? plans.find((p) => p.id === screen.planId)
+    currentScreen.type === "tickets"
+      ? plans.find((p) => p.id === currentScreen.planId)
       : undefined;
   const selectedTickets =
-    screen.type === "tickets" ? (ticketsByPlan.get(screen.planId) ?? []) : [];
+    currentScreen.type === "tickets"
+      ? (ticketsByPlan.get(currentScreen.planId) ?? [])
+      : [];
 
   const workflowNames = useMemo(
     () => selectedTickets.map((t) => t.workflow),
@@ -94,11 +96,11 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
         if (input === "q") {
           exit();
         }
-        if (key.escape && screen.type === "tickets") {
+        if (key.escape && currentScreen.type === "tickets") {
           showPlansScreen();
         }
       },
-      [exit, screen, showPlansScreen],
+      [exit, currentScreen, showPlansScreen],
     ),
   );
 
@@ -109,20 +111,21 @@ function AppInner({ stateManager, stateDir, workflowLoader }: AppProps) {
   const tableHeight = Math.max(1, terminalHeight - 6);
 
   const breadcrumbPath = useMemo(() => {
-    if (screen.type === "tickets" && selectedPlan) {
+    if (currentScreen.type === "tickets" && selectedPlan) {
       return ["Plans", selectedPlan.name];
     }
     return ["Plans"];
-  }, [screen, selectedPlan]);
+  }, [currentScreen, selectedPlan]);
 
-  const hotkeys = screen.type === "tickets" ? TICKETS_HOTKEYS : PLANS_HOTKEYS;
+  const hotkeys =
+    currentScreen.type === "tickets" ? TICKETS_HOTKEYS : PLANS_HOTKEYS;
 
   return (
     <Box flexDirection="column" height={terminalHeight}>
       <Header planCount={plans.length} runningCount={runningCount} />
       <Breadcrumb path={breadcrumbPath} />
       <Box flexDirection="column" flexGrow={1}>
-        {screen.type === "tickets" && selectedPlan ? (
+        {currentScreen.type === "tickets" && selectedPlan ? (
           <TicketsScreen
             plan={selectedPlan}
             tickets={selectedTickets}
