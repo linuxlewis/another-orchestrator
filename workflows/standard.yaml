@@ -59,10 +59,20 @@ phases:
     args:
       - "{{ repo }}"
       - "{{ context.pr_number }}"
+    capture:
+      review_state: stdout
     intervalSeconds: 60
     timeoutSeconds: 86400
-    onSuccess: await_merge
+    onSuccess: route_review
     onFailure: route_review_failure
+
+  - id: route_review
+    type: script
+    command: route-review.sh
+    args:
+      - "{{ context.review_state }}"
+    onSuccess: await_merge
+    onFailure: handle_review
 
   - id: route_review_failure
     type: script
