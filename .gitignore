@@ -6,3 +6,4 @@ logs/
 .DS_Store
 .pi/
 orchestrator.yaml
+.vitest_tmp
